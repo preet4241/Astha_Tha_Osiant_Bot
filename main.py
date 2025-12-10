@@ -1,0 +1,3230 @@
+# -*- coding: utf-8 -*-
+from telethon import TelegramClient, events, Button
+import os
+import random
+import asyncio
+import re
+import json
+import aiohttp
+import shutil
+from datetime import datetime, timedelta
+import threading
+from flask import Flask, render_template
+
+app = Flask(__name__)
+bot_status = {"running": False, "start_time": None}
+from database import (
+    add_user, get_user, ban_user, unban_user,
+    get_all_users, get_stats, increment_messages,
+    set_setting, get_setting, add_channel, remove_channel,
+    get_all_channels, channel_exists, add_group, remove_group,
+    get_all_groups, group_exists, is_group_active,
+    set_tool_status, get_tool_status, get_all_active_tools,
+    get_tool_apis, add_tool_api, remove_tool_api,
+    set_backup_channel, get_backup_channel, set_backup_interval,
+    get_backup_interval, set_last_backup_time, get_last_backup_time,
+    get_db_file
+)
+
+api_id = int(os.getenv('API_ID', '0'))
+api_hash = os.getenv('API_HASH', '')
+bot_token = os.getenv('BOT_TOKEN', '')
+owner_id = int(os.getenv('OWNER_ID', '0'))
+
+client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
+
+broadcast_temp = {}
+broadcast_stats = {}
+start_text_temp = {}
+channel_action_temp = {}
+channel_page_temp = {}
+group_action_temp = {}
+group_page_temp = {}
+user_action_temp = {}
+user_action_type = {}
+tool_session = {}
+tool_api_action = {}
+backup_channel_temp = {}
+
+TOOL_CONFIG = {
+    'number_info': {
+        'name': '📱 Number Info',
+        'prompt': '📱 Enter Mobile Number:\n\nFormat: 10 digit number\nExample: 7999520665',
+        'placeholder': '{number}',
+    },
+    'aadhar_info': {
+        'name': '🆔 Aadhar Info',
+        'prompt': '🆔 Enter Aadhar Number:\n\nFormat: 12 digit number\nExample: 123456789012',
+        'placeholder': '{aadhar}',
+    },
+    'aadhar_family': {
+        'name': '👨‍👩‍👧‍👦 Aadhar to Family',
+        'prompt': '👨‍👩‍👧‍👦 Enter Aadhar Number:\n\nFormat: 12 digit number\nExample: 123456789012',
+        'placeholder': '{aadhar}',
+    },
+    'vehicle_info': {
+        'name': '🚗 Vehicle Info',
+        'prompt': '🚗 Enter Vehicle Number:\n\nFormat: Indian Vehicle Number\nExample: MH12AB1234',
+        'placeholder': '{vehicle}',
+    },
+    'ifsc_info': {
+        'name': '🏦 IFSC Info',
+        'prompt': '🏦 Enter IFSC Code:\n\nFormat: 11 character code\nExample: SBIN0001234',
+        'placeholder': '{ifsc}',
+    },
+    'pak_num': {
+        'name': '🇵🇰 Pak Num Info',
+        'prompt': '🇵🇰 Enter Pakistan Number:\n\nFormat: 10-11 digit number\nExample: 03001234567',
+        'placeholder': '{number}',
+    },
+    'pincode_info': {
+        'name': '📍 Pin Code Info',
+        'prompt': '📍 Enter Pin Code:\n\nFormat: 6 digit code\nExample: 400001',
+        'placeholder': '{pincode}',
+    },
+    'imei_info': {
+        'name': '📱 IMEI Info',
+        'prompt': '📱 Enter IMEI Number:\n\nFormat: 15 digit number\nExample: 123456789012345',
+        'placeholder': '{imei}',
+    },
+    'ip_info': {
+        'name': '🌐 IP Info',
+        'prompt': '🌐 Enter IP Address:\n\nFormat: IPv4 or IPv6\nExample: 8.8.8.8',
+        'placeholder': '{ip}',
+    },
+}
+
+def validate_phone_number(text):
+    """Validate and normalize Indian phone number"""
+    cleaned = re.sub(r'[^\d]', '', text)
+    if cleaned.startswith('91') and len(cleaned) == 12:
+        cleaned = cleaned[2:]
+    if cleaned.startswith('0') and len(cleaned) == 11:
+        cleaned = cleaned[1:]
+    if len(cleaned) == 10 and cleaned[0] in '6789':
+        return cleaned
+    return None
+
+def validate_aadhar(text):
+    """Validate Aadhar number (12 digits)"""
+    cleaned = re.sub(r'[^\d]', '', text)
+    if len(cleaned) == 12:
+        return cleaned
+    return None
+
+def validate_vehicle(text):
+    """Validate Indian vehicle number"""
+    cleaned = re.sub(r'[^A-Za-z0-9]', '', text).upper()
+    if re.match(r'^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$', cleaned):
+        return cleaned
+    return None
+
+def validate_ifsc(text):
+    """Validate IFSC code (11 characters)"""
+    cleaned = text.strip().upper()
+    if re.match(r'^[A-Z]{4}0[A-Z0-9]{6}$', cleaned):
+        return cleaned
+    return None
+
+def validate_pak_number(text):
+    """Validate Pakistan phone number"""
+    cleaned = re.sub(r'[^\d]', '', text)
+    if cleaned.startswith('92') and len(cleaned) == 12:
+        cleaned = cleaned[2:]
+    if len(cleaned) == 10 or len(cleaned) == 11:
+        return cleaned
+    return None
+
+def validate_pincode(text):
+    """Validate Indian PIN code (6 digits)"""
+    cleaned = re.sub(r'[^\d]', '', text)
+    if len(cleaned) == 6:
+        return cleaned
+    return None
+
+def validate_imei(text):
+    """Validate IMEI number (15 digits)"""
+    cleaned = re.sub(r'[^\d]', '', text)
+    if len(cleaned) == 15:
+        return cleaned
+    return None
+
+def validate_ip(text):
+    """Validate IP address"""
+    cleaned = text.strip()
+    ipv4_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+    if re.match(ipv4_pattern, cleaned):
+        parts = cleaned.split('.')
+        if all(0 <= int(p) <= 255 for p in parts):
+            return cleaned
+    if ':' in cleaned:
+        return cleaned
+    return None
+
+VALIDATORS = {
+    'number_info': validate_phone_number,
+    'aadhar_info': validate_aadhar,
+    'aadhar_family': validate_aadhar,
+    'vehicle_info': validate_vehicle,
+    'ifsc_info': validate_ifsc,
+    'pak_num': validate_pak_number,
+    'pincode_info': validate_pincode,
+    'imei_info': validate_imei,
+    'ip_info': validate_ip,
+}
+
+async def call_tool_api(tool_name, validated_input):
+    """Call the API for a tool and return JSON response. Try multiple APIs on error."""
+    # Get all APIs for this tool
+    all_apis = get_tool_apis(tool_name)
+
+    if not all_apis:
+        return None, "No API configured for this tool. Please add an API first."
+
+    # Shuffle APIs to distribute load randomly
+    import random
+    random.shuffle(all_apis)
+
+    last_error = None
+
+    # Try each API until one succeeds
+    for api_info in all_apis:
+        api_url = api_info['url']
+        url = api_url.replace(TOOL_CONFIG[tool_name]['placeholder'], validated_input)
+
+        try:
+            print(f"[LOG] 🔄 Trying API: {api_url[:50]}...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status == 200:
+                        try:
+                            data = await response.json()
+                            print(f"[LOG] ✅ API Success: {api_url[:50]}")
+                            return data, None
+                        except Exception as json_err:
+                            last_error = f"JSON Parse Error: {str(json_err)}"
+                            print(f"[LOG] ❌ JSON error from API: {last_error}")
+                            continue
+                    else:
+                        last_error = f"API Error: Status {response.status}"
+                        print(f"[LOG] ❌ API returned status {response.status}, trying next API...")
+                        continue
+        except asyncio.TimeoutError:
+            last_error = "API Timeout: Request took too long"
+            print(f"[LOG] ⏱️ API timeout, trying next API...")
+            continue
+        except Exception as e:
+            last_error = f"API Error: {str(e)}"
+            print(f"[LOG] ❌ API error: {last_error}, trying next API...")
+            continue
+
+    # If all APIs failed, return the last error
+    print(f"[LOG] ❌ All APIs failed for {tool_name}")
+    return None, f"All APIs failed. Last error: {last_error}"
+
+async def send_back_button_delayed(client, chat_id, msg_id, back_callback, delay=2):
+    """Send back button after delay"""
+    await asyncio.sleep(delay)
+    try:
+        buttons = [[Button.inline('👈 Back', back_callback)]]
+        await client.edit_message(chat_id, msg_id, buttons=buttons)
+    except:
+        pass
+
+def get_greeting():
+    from datetime import timezone
+    utc_now = datetime.now(timezone.utc)
+    ist_hour = (utc_now.hour + 5) % 24
+    if utc_now.minute >= 30:
+        ist_hour = (ist_hour + 1) % 24
+    
+    if 5 <= ist_hour < 12:
+        return "Good Morning"
+    elif 12 <= ist_hour < 17:
+        return "Good Afternoon"
+    elif 17 <= ist_hour < 21:
+        return "Good Evening"
+    else:
+        return "Good Night"
+
+def get_default_owner_text():
+    return "{greeting} Boss\n\nBOT Status: Online\nUsers: {total_users} | Active: {active_users}\n\nControl Desk:"
+
+def get_default_user_text():
+    return "{greeting} {first_name}!\n\nWhat would you like to do?"
+
+def get_default_welcome_messages():
+    """Return list of default welcome messages for groups"""
+    return [
+        "Welcome to the hall of fame, @{username}! {group_name} honors you! 🏛️",
+        "🎉 A warm welcome to @{username}! {group_name} is now more awesome with you here!",
+        "🌟 Welcome aboard, @{username}! {group_name} welcomes you with open arms!",
+        "👋 Hey @{username}! {group_name} is thrilled to have you join us!",
+        "🎊 Welcome to paradise, @{username}! {group_name} just got better!",
+        "✨ Greetings @{username}! {group_name} is honored by your presence!",
+        "🎭 Welcome to the show, @{username}! {group_name} is ready to entertain you!",
+        "🚀 Blast off into @{username}! {group_name} is taking you on an epic journey!",
+        "💎 Welcome precious member @{username}! {group_name} treasures your arrival!",
+        "🎪 Step right up, @{username}! {group_name} welcomes you to the greatest show!"
+    ]
+
+def get_random_welcome_message(username, group_name):
+    """Get a random welcome message - includes both default and custom messages"""
+    messages = get_default_welcome_messages()
+
+    # Get custom welcome messages from database
+    custom_msg = get_setting('group_welcome_text', '')
+    if custom_msg:
+        # Add custom message to the pool
+        messages.append(custom_msg)
+
+    # Pick random message from combined pool
+    selected = random.choice(messages)
+    return selected.format(username=username, group_name=group_name)
+
+def format_text(text, sender, stats, user=None):
+    current_date = datetime.now().strftime("%d-%m-%Y")
+    current_time = datetime.now().strftime("%H:%M:%S")
+    current_datetime = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+
+    user_messages = 0
+    joined_date = "Unknown"
+    if user:
+        user_messages = user.get('messages', 0)
+        joined_date = user.get('joined', 'Unknown')[:10]
+
+    return text.format(
+        greeting=get_greeting(),
+        first_name=sender.first_name or 'User',
+        username=sender.username or 'user',
+        user_id=sender.id,
+        total_users=stats['total_users'],
+        active_users=stats['active_users'],
+        banned_users=stats['banned_users'],
+        total_messages=stats['total_messages'],
+        date=current_date,
+        time=current_time,
+        datetime=current_datetime,
+        user_messages=user_messages,
+        joined_date=joined_date,
+        bot_name='MultiBot'
+    )
+
+async def check_user_access(sender_id):
+    """Check if user is banned or needs to join channels"""
+    user_data = get_user(sender_id)
+    if user_data and user_data.get('banned'):
+        return {'allowed': False, 'reason': 'banned'}
+
+    # Check sub-force channels
+    channels = get_all_channels()
+    if channels:
+        not_joined = []
+        for ch in channels:
+            try:
+                # Check if user is member of channel
+                try:
+                    participant = await client.get_permissions(ch['channel_id'], sender_id)
+                    if not participant or participant.is_banned:
+                        not_joined.append(ch)
+                except:
+                    not_joined.append(ch)
+            except Exception as e:
+                print(f"[LOG] Error checking channel {ch['username']}: {e}")
+                not_joined.append(ch)
+
+        if not_joined:
+            return {'allowed': False, 'reason': 'not_subscribed', 'channels': not_joined}
+
+    return {'allowed': True}
+
+@client.on(events.NewMessage(pattern='/start'))
+async def start_handler(event):
+    # Check if in group and group is removed
+    if event.is_group:
+        chat = await event.get_chat()
+        if not is_group_active(chat.id):
+            print(f"[LOG] ⏭️ /start ignored - Group {chat.title} is removed")
+            raise events.StopPropagation
+
+    sender = await event.get_sender()
+    if not sender:
+        print(f"[LOG] ⚠️ /start received but no sender info")
+        return
+
+    print(f"[LOG] 🚀 /start command from {sender.first_name} (@{sender.username or 'no_username'}) ID: {sender.id}")
+    add_user(sender.id, sender.username or 'unknown', sender.first_name or 'User')
+
+    # Check user access (banned or sub-force)
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                print(f"[LOG] 🚫 Banned user {sender.id} tried to use /start")
+                await event.respond('🚫 You are BANNED from using this bot!')
+                raise events.StopPropagation
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                buttons.append([Button.inline('✅ Check Again', b'check_subscription')])
+                await event.respond(msg, buttons=buttons)
+                raise events.StopPropagation
+
+    stats = get_stats()
+
+    if sender.id == owner_id:
+        print(f"[LOG] 👑 Owner {sender.id} accessed bot")
+        buttons = [
+            [Button.inline('🛠️ Tools', b'owner_tools')],
+            [Button.inline('👥 Users', b'owner_users'), Button.inline('📢 Broadcast', b'owner_broadcast')],
+            [Button.inline('📊 Status', b'owner_status'), Button.inline('⚙️ Settings', b'owner_settings')],
+        ]
+        custom_text = get_setting('owner_start_text', get_default_owner_text())
+        owner_text = format_text(custom_text, sender, stats, None)
+        await event.respond(owner_text, buttons=buttons)
+    else:
+        user_data = get_user(sender.id)
+        buttons = [
+            [Button.inline('🛠️ Tools', b'user_tools')],
+            [Button.inline('👤 Profile', b'user_profile'), Button.inline('❓ Help', b'user_help')],
+            [Button.inline('ℹ️ About', b'user_about')],
+        ]
+        custom_text = get_setting('user_start_text', get_default_user_text())
+        user_text = format_text(custom_text, sender, stats, user_data)
+        await event.respond(user_text, buttons=buttons)
+
+    raise events.StopPropagation
+
+@client.on(events.CallbackQuery)
+async def callback_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+    data = event.data
+
+    if sender.id != owner_id:
+        user_data = get_user(sender.id)
+        if user_data and user_data.get('banned'):
+            await event.answer("🚫 You are BANNED!", alert=True)
+            return
+        if not data.startswith(b'user_'):
+            await event.answer("Owner only!", alert=True)
+            return
+
+    if data == b'owner_groups':
+        groups = get_all_groups()
+        buttons = [
+            [Button.inline('➕ Add', b'group_add'), Button.inline('➖ Remove', b'group_remove')],
+            [Button.inline('📋 List', b'group_list_page_1'), Button.inline('👋 Welcome', b'group_welcome_text')],
+            [Button.inline('🔙 Back', b'owner_back')],
+        ]
+        group_text = f"GROUPS\n\nConnected: {len(groups)}\n\nWhat do you want to do?"
+        await event.edit(group_text, buttons=buttons)
+
+    elif data == b'group_welcome_text':
+        buttons = [
+            [Button.inline('✏️ Edit', b'group_welcome_text_add'), Button.inline('🗑️ Remove', b'group_welcome_text_remove'), Button.inline('🔄 Default', b'group_welcome_text_default')],
+            [Button.inline('💬 Messages', b'group_welcome_text_msgs')],
+            [Button.inline('🔙 Back', b'owner_groups')],
+        ]
+        current_text = get_setting('group_welcome_text', 'Welcome to group!')
+        text = f"GROUP WELCOME TEXT\n\nCurrent: {current_text}\n\nManage welcome message for new members:"
+        await event.edit(text, buttons=buttons)
+
+    elif data == b'group_welcome_text_msgs':
+        groups = get_all_groups()
+        total_groups = len(groups)
+        msg_text = f"Total Groups Connected: {total_groups}\n\n"
+        for i, grp in enumerate(groups, 1):
+            msg_text += f"{i}. {grp['title']}\n"
+        buttons = [
+            [Button.inline('🔙 Back', b'group_welcome_text')]
+        ]
+        await event.edit(msg_text, buttons=buttons)
+
+    elif data == b'group_welcome_text_add':
+        start_text_temp[sender.id] = 'group_welcome'
+        buttons = [[Button.inline('❌ Cancel', b'group_welcome_text')]]
+        help_text = "Type new group welcome text:\n\nPlaceholders: {greeting}, {date}, {time}, {bot_name}, {first_name}"
+        await event.edit(help_text, buttons=buttons)
+
+    elif data == b'group_welcome_text_remove':
+        set_setting('group_welcome_text', '')
+        await event.edit('Group welcome text removed!', buttons=[[Button.inline('🔙 Back', b'group_welcome_text')]])
+
+    elif data == b'group_welcome_text_default':
+        set_setting('group_welcome_text', '')
+        await event.edit('Group welcome text reset to random default messages!', buttons=[[Button.inline('🔙 Back', b'group_welcome_text')]])
+
+    elif data == b'group_add':
+        group_action_temp[sender.id] = 'add'
+        buttons = [[Button.inline('❌ Cancel', b'owner_groups')]]
+        await event.edit("ADD GROUP\n\nChoose one method:\n1. Group ID (number)\n2. Group username (@username)\n3. Forward message from group", buttons=buttons)
+
+    elif data == b'group_remove':
+        groups = get_all_groups()
+        if not groups:
+            await event.edit('No groups to remove!', buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
+        else:
+            group_page_temp[sender.id] = 1
+            total_pages = (len(groups) + 5) // 6
+            start_idx = 0
+            end_idx = min(6, len(groups))
+            buttons = []
+            for grp in groups[start_idx:end_idx]:
+                buttons.append([Button.inline(f'❌ {grp["username"]}', f'remove_grp_{grp["group_id"]}')])
+            if total_pages > 1:
+                buttons.append([Button.inline(f'➡️ Next (1/{total_pages})', b'group_remove_next')])
+            buttons.append([Button.inline('🔙 Back', b'owner_groups')])
+            try:
+                await event.edit('REMOVE GROUP\n\nSelect group to remove:', buttons=buttons)
+            except:
+                await event.answer('✅ Group removed!')
+
+    elif data == b'group_remove_next':
+        groups = get_all_groups()
+        page = group_page_temp.get(sender.id, 1) + 1
+        total_pages = (len(groups) + 5) // 6
+        if page > total_pages:
+            page = 1
+        group_page_temp[sender.id] = page
+        start_idx = (page - 1) * 6
+        end_idx = min(start_idx + 6, len(groups))
+        buttons = []
+        for grp in groups[start_idx:end_idx]:
+            buttons.append([Button.inline(f'❌ {grp["username"]}', f'remove_grp_{grp["group_id"]}')])
+        if total_pages > 1:
+            buttons.append([Button.inline(f'➡️ Next ({page}/{total_pages})', b'group_remove_next')])
+        buttons.append([Button.inline('🔙 Back', b'owner_groups')])
+        await event.edit('REMOVE GROUP\n\nSelect group to remove:', buttons=buttons)
+
+    elif data == b'group_list_page_1':
+        groups = get_all_groups()
+        if not groups:
+            await event.edit('No groups yet!', buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
+        else:
+            group_page_temp[sender.id] = 1
+            total_pages = (len(groups) + 5) // 6
+            start_idx = 0
+            end_idx = min(6, len(groups))
+            buttons = []
+            for grp in groups[start_idx:end_idx]:
+                buttons.append([Button.inline(f'👥 {grp["title"]}', f'show_grp_{grp["group_id"]}')])
+            if total_pages > 1:
+                buttons.append([Button.inline(f'➡️ Next (1/{total_pages})', b'group_list_next')])
+            buttons.append([Button.inline('🔙 Back', b'owner_groups')])
+            await event.edit('GROUPS LIST', buttons=buttons)
+
+    elif data == b'group_list_next':
+        groups = get_all_groups()
+        page = group_page_temp.get(sender.id, 1) + 1
+        total_pages = (len(groups) + 5) // 6
+        if page > total_pages:
+            page = 1
+        group_page_temp[sender.id] = page
+        start_idx = (page - 1) * 6
+        end_idx = min(start_idx + 6, len(groups))
+        buttons = []
+        for grp in groups[start_idx:end_idx]:
+            buttons.append([Button.inline(f'👥 {grp["title"]}', f'show_grp_{grp["group_id"]}')])
+        if total_pages > 1:
+            buttons.append([Button.inline(f'➡️ Next ({page}/{total_pages})', b'group_list_next')])
+        buttons.append([Button.inline('🔙 Back', b'owner_groups')])
+        await event.edit('GROUPS LIST', buttons=buttons)
+
+    elif data.startswith(b'remove_grp_'):
+        group_id = int(data.split(b'_')[2])
+        remove_group(group_id)
+        groups = get_all_groups()
+        if not groups:
+            await event.edit('All groups removed!', buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
+        else:
+            total_pages = (len(groups) + 5) // 6
+            group_page_temp[sender.id] = 1
+            start_idx = 0
+            end_idx = min(6, len(groups))
+            buttons = []
+            for grp in groups[start_idx:end_idx]:
+                buttons.append([Button.inline(f'❌ {grp["username"]}', f'remove_grp_{grp["group_id"]}')])
+            if total_pages > 1:
+                buttons.append([Button.inline(f'➡️ Next (1/{total_pages})', b'group_remove_next')])
+            buttons.append([Button.inline('🔙 Back', b'owner_groups')])
+            try:
+                await event.edit('REMOVE GROUP\n\nSelect group to remove:', buttons=buttons)
+            except:
+                await event.answer('✅ Group removed!')
+
+    elif data.startswith(b'show_grp_'):
+        group_id = int(data.split(b'_')[2])
+        groups = get_all_groups()
+        grp_info = next((g for g in groups if g['group_id'] == group_id), None)
+        if grp_info:
+            info_text = f"👥 GROUP: {grp_info['title']}\nID: {grp_info['group_id']}\nUsername: @{grp_info['username']}\nAdded: {grp_info['added_date'][:10]}"
+            await event.edit(info_text, buttons=[[Button.inline('🔙 Back', b'group_list_page_1')]])
+
+    elif data == b'setting_start_text':
+        buttons = [
+            [Button.inline('👑 Owner', b'start_text_owner'), Button.inline('👤 User', b'start_text_user')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        await event.edit('START TEXT\n\nChoose which text to customize:', buttons=buttons)
+
+    elif data == b'start_text_owner':
+        buttons = [
+            [Button.inline('✏️ Edit', b'start_text_owner_edit'), Button.inline('👁️ See', b'start_text_owner_see')],
+            [Button.inline('🔄 Default', b'start_text_owner_default')],
+            [Button.inline('🔙 Back', b'setting_start_text')],
+        ]
+        await event.edit('OWNER START TEXT\n\nWhat do you want to do?', buttons=buttons)
+
+    elif data == b'start_text_user':
+        buttons = [
+            [Button.inline('✏️ Edit', b'start_text_user_edit'), Button.inline('👁️ See', b'start_text_user_see')],
+            [Button.inline('🔄 Default', b'start_text_user_default')],
+            [Button.inline('🔙 Back', b'setting_start_text')],
+        ]
+        await event.edit('USER START TEXT\n\nWhat do you want to do?', buttons=buttons)
+
+    elif data == b'start_text_owner_edit':
+        start_text_temp[sender.id] = 'owner'
+        buttons = [[Button.inline('❌ Cancel', b'start_text_owner')]]
+        help_text = "Type new start text for Owner:\n\nPlaceholders: {greeting}, {date}, {time}, {total_users}, {active_users}, {bot_name}"
+        await event.edit(help_text, buttons=buttons)
+
+    elif data == b'start_text_user_edit':
+        start_text_temp[sender.id] = 'user'
+        buttons = [[Button.inline('❌ Cancel', b'start_text_user')]]
+        help_text = "Type new start text for User:\n\nPlaceholders: {greeting}, {first_name}, {username}, {date}, {user_messages}, {joined_date}"
+        await event.edit(help_text, buttons=buttons)
+
+    elif data == b'start_text_owner_see':
+        owner_text = get_setting('owner_start_text', get_default_owner_text())
+        preview = format_text(owner_text, sender, get_stats(), None)
+        see_text = f"OWNER START TEXT PREVIEW:\n\n{preview}"
+        await event.edit(see_text, buttons=[[Button.inline('🔙 Back', b'start_text_owner')]])
+
+    elif data == b'start_text_user_see':
+        user_text = get_setting('user_start_text', get_default_user_text())
+        user_data = get_user(sender.id)
+        preview = format_text(user_text, sender, get_stats(), user_data)
+        see_text = f"USER START TEXT PREVIEW:\n\n{preview}"
+        await event.edit(see_text, buttons=[[Button.inline('🔙 Back', b'start_text_user')]])
+
+    elif data == b'start_text_owner_default':
+        set_setting('owner_start_text', get_default_owner_text())
+        await event.edit('✅ Owner start text reset to default!\n\nOK', buttons=[[Button.inline('🔙 Back', b'start_text_owner')]])
+
+    elif data == b'start_text_user_default':
+        set_setting('user_start_text', get_default_user_text())
+        await event.edit('✅ User start text reset to default!\n\nOK', buttons=[[Button.inline('🔙 Back', b'start_text_user')]])
+
+    elif data == b'setting_sub_force':
+        channels = get_all_channels()
+        buttons = [
+            [Button.inline('➕ Add', b'sub_force_add'), Button.inline('➖ Remove', b'sub_force_remove')],
+            [Button.inline('📋 List', b'sub_force_list_page_1')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        sub_text = f"SUB-FORCE (Channel Subscription)\n\nActive Channels: {len(channels)}\n\nWhat do you want to do?"
+        await event.edit(sub_text, buttons=buttons)
+
+    elif data == b'sub_force_add':
+        channel_action_temp[sender.id] = 'add'
+        buttons = [[Button.inline('❌ Cancel', b'setting_sub_force')]]
+        await event.edit("ADD CHANNEL\n\nChoose one method:\n1. Channel ID (number)\n2. Channel username (@username)\n3. Forward message from channel", buttons=buttons)
+
+    elif data == b'sub_force_remove':
+        channels = get_all_channels()
+        if not channels:
+            await event.edit('No channels to remove!', buttons=[[Button.inline('🔙 Back', b'setting_sub_force')]])
+        else:
+            channel_page_temp[sender.id] = 1
+            total_pages = (len(channels) + 5) // 6
+            start_idx = 0
+            end_idx = min(6, len(channels))
+            buttons = []
+            for ch in channels[start_idx:end_idx]:
+                buttons.append([Button.inline(f'❌ {ch["username"]}', f'remove_ch_{ch["channel_id"]}')])
+            if total_pages > 1:
+                buttons.append([Button.inline(f'➡️ Next (1/{total_pages})', b'sub_force_remove_next')])
+            buttons.append([Button.inline('🔙 Back', b'setting_sub_force')])
+            await event.edit('REMOVE CHANNEL\n\nSelect channel to remove:', buttons=buttons)
+
+    elif data == b'sub_force_remove_next':
+        channels = get_all_channels()
+        page = channel_page_temp.get(sender.id, 1) + 1
+        total_pages = (len(channels) + 5) // 6
+        if page > total_pages:
+            page = 1
+        channel_page_temp[sender.id] = page
+        start_idx = (page - 1) * 6
+        end_idx = min(start_idx + 6, len(channels))
+        buttons = []
+        for ch in channels[start_idx:end_idx]:
+            buttons.append([Button.inline(f'❌ {ch["username"]}', f'remove_ch_{ch["channel_id"]}')])
+        if total_pages > 1:
+            buttons.append([Button.inline(f'➡️ Next ({page}/{total_pages})', b'sub_force_remove_next')])
+        buttons.append([Button.inline('🔙 Back', b'setting_sub_force')])
+        await event.edit('REMOVE CHANNEL\n\nSelect channel to remove:', buttons=buttons)
+
+    elif data.startswith(b'remove_ch_'):
+        channel_id = int(data.split(b'_')[2])
+        channels = get_all_channels()
+        for ch in channels:
+            if ch['channel_id'] == channel_id:
+                remove_channel(ch['username'])
+                await event.edit(f'✅ Channel {ch["username"]} removed!', buttons=[[Button.inline('🔙 Back', b'setting_sub_force')]])
+                break
+
+    elif data == b'sub_force_list_page_1' or data.startswith(b'sub_force_list_page_'):
+        channels = get_all_channels()
+        if not channels:
+            await event.edit('No channels added yet!', buttons=[[Button.inline('🔙 Back', b'setting_sub_force')]])
+        else:
+            if data.startswith(b'sub_force_list_page_'):
+                page = int(data.split(b'_')[3])
+            else:
+                page = 1
+            total_pages = (len(channels) + 5) // 6
+            start_idx = (page - 1) * 6
+            end_idx = min(start_idx + 6, len(channels))
+
+            text = f"📺 CHANNELS LIST (Page {page}/{total_pages})\n\n"
+            for i, ch in enumerate(channels[start_idx:end_idx], 1):
+                added = ch['added_date'][:10] if ch['added_date'] else 'Unknown'
+                text += f"{i}. @{ch['username']}\n"
+                text += f"   Title: {ch['title']}\n"
+                text += f"   Added: {added}\n\n"
+
+            buttons = []
+            if page > 1:
+                buttons.append([Button.inline(f'⬅️ Prev ({page}/{total_pages})', f'sub_force_list_page_{page-1}'.encode())])
+            if page < total_pages:
+                buttons.append([Button.inline(f'➡️ Next ({page}/{total_pages})', f'sub_force_list_page_{page+1}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'setting_sub_force')])
+            await event.edit(text, buttons=buttons)
+
+    elif data == b'owner_settings':
+        buttons = [
+            [Button.inline('🛠️ Tools Handler', b'setting_tools_handler')],
+            [Button.inline('📺 Sub-Force', b'setting_sub_force'), Button.inline('👥 Groups', b'owner_groups')],
+            [Button.inline('📝 Start Text', b'setting_start_text'), Button.inline('💾 Backup', b'setting_backup')],
+            [Button.inline('❓ Help Desk', b'setting_help_desk'), Button.inline('ℹ️ About Desk', b'setting_about_desk')],
+            [Button.inline('🔙 Back', b'owner_back')],
+        ]
+        settings_text = "⚙️ **BOT SETTINGS**\n\nConfigure your bot settings:"
+        await event.edit(settings_text, buttons=buttons)
+
+    elif data == b'setting_help_desk':
+        buttons = [
+            [Button.inline('✏️ Edit', b'help_desk_edit'), Button.inline('👁️ See', b'help_desk_see')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        await event.edit('❓ **HELP DESK**\n\nManage user help section:\n\n📝 Edit the help message shown to users\n👁️ Preview current help message', buttons=buttons)
+
+    elif data == b'help_desk_edit':
+        start_text_temp[sender.id] = 'help_desk'
+        buttons = [[Button.inline('❌ Cancel', b'setting_help_desk')]]
+        help_text = "✏️ **EDIT HELP TEXT**\n\nSend new help message.\n\n📌 **Available Placeholders:**\n{greeting} - Time-based greeting\n{first_name} - User's first name\n{username} - User's username\n{user_id} - User's ID\n{bot_name} - Bot name\n{date} - Current date\n{time} - Current time\n{total_users} - Total users\n{active_users} - Active users\n{user_messages} - User's message count\n{joined_date} - User join date"
+        await event.edit(help_text, buttons=buttons)
+
+    elif data == b'help_desk_see':
+        current_help = get_setting('user_help_text', '❓ **HELP DESK**\n\n🤖 **Bot Commands:**\n/start - Start the bot\n/hello - Get a greeting\n/time - Get current time\n\n🛠️ **Available Tools:**\n/num - Phone number lookup\n/adhar - Aadhar info\n/family - Aadhar family lookup\n/vhe - Vehicle information\n/ifsc - IFSC code details\n/pak - Pakistan number info\n/pin - PIN code lookup\n/imei - IMEI information\n/ip - IP address details\n\n📌 **Usage:**\nSelect a tool from the menu or use commands directly.\n\n💡 **Tip:**\nAll tools provide instant results in JSON format.')
+        user_data = get_user(sender.id)
+        preview = format_text(current_help, sender, get_stats(), user_data)
+        buttons = [[Button.inline('🔙 Back', b'setting_help_desk')]]
+        await event.edit(f"👁️ **HELP TEXT PREVIEW:**\n\n{preview}", buttons=buttons)
+
+    elif data == b'setting_about_desk':
+        buttons = [
+            [Button.inline('✏️ Edit', b'about_desk_edit'), Button.inline('👁️ See', b'about_desk_see')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        await event.edit('ℹ️ **ABOUT DESK**\n\nManage user about section:\n\n📝 Edit the about message shown to users\n👁️ Preview current about message', buttons=buttons)
+
+    elif data == b'about_desk_edit':
+        start_text_temp[sender.id] = 'about_desk'
+        buttons = [[Button.inline('❌ Cancel', b'setting_about_desk')]]
+        about_text = "✏️ **EDIT ABOUT TEXT**\n\nSend new about message.\n\n📌 **Available Placeholders:**\n{greeting} - Time-based greeting\n{first_name} - User's first name\n{username} - User's username\n{user_id} - User's ID\n{bot_name} - Bot name\n{date} - Current date\n{time} - Current time\n{total_users} - Total users\n{active_users} - Active users\n{banned_users} - Banned users\n{total_messages} - Total messages\n{user_messages} - User's message count\n{joined_date} - User join date"
+        await event.edit(about_text, buttons=buttons)
+
+    elif data == b'about_desk_see':
+        current_about = get_setting('user_about_text', 'ℹ️ **ABOUT BOT**\n\n🤖 **Multi-Tool Information Bot**\n\n📊 **Version:** 2.0\n🐍 **Framework:** Telethon\n💾 **Database:** SQLite\n🌐 **Web Dashboard:** Flask\n\n👥 **Total Users:** {total_users}\n✅ **Active Users:** {active_users}\n\n📅 **Date:** {date}\n⏰ **Time:** {time}\n\n⚡ **Features:**\n• 9 Information Tools\n• Group Management\n• Broadcasting System\n• Web Dashboard\n• Auto Backup\n\n💡 **Powered by Telethon MTProto**')
+        user_data = get_user(sender.id)
+        preview = format_text(current_about, sender, get_stats(), user_data)
+        buttons = [[Button.inline('🔙 Back', b'setting_about_desk')]]
+        await event.edit(f"👁️ **ABOUT TEXT PREVIEW:**\n\n{preview}", buttons=buttons)
+
+    elif data == b'setting_backup':
+        backup_channel = get_backup_channel()
+        if not backup_channel:
+            buttons = [[Button.inline('🔙 Back', b'owner_settings')]]
+            await event.edit('💾 BACKUP\n\n⚠️ Please set backup channel first!\n\nSend me one of:\n- Channel ID (number)\n- @username\n- Forward a message from the channel', buttons=buttons)
+            backup_channel_temp[sender.id] = 'add'
+        else:
+            interval = get_backup_interval()
+            buttons = [
+                [Button.inline('🔄 Change Channel', b'backup_change_channel')],
+                [Button.inline('⏰ Interval Time', b'backup_interval'), Button.inline('💾 Backup Now', b'backup_now')],
+                [Button.inline('🔙 Back', b'owner_settings')],
+            ]
+            backup_text = f"💾 BACKUP SETTINGS\n\n📺 Channel: {backup_channel['title']}\n@{backup_channel['username']}\n\n⏰ Interval: {interval} minutes"
+            await event.edit(backup_text, buttons=buttons)
+
+    elif data == b'backup_change_channel':
+        buttons = [[Button.inline('🔙 Back', b'setting_backup')]]
+        await event.edit('🔄 CHANGE BACKUP CHANNEL\n\nSend me one of:\n- Channel ID (number)\n- @username\n- Forward a message from the channel', buttons=buttons)
+        backup_channel_temp[sender.id] = 'add'
+
+    elif data == b'backup_interval':
+        buttons = [[Button.inline('🔙 Back', b'setting_backup')]]
+        await event.edit('⏰ SET BACKUP INTERVAL\n\nSend interval in minutes (e.g., 1440, 720, 60):', buttons=buttons)
+        backup_channel_temp[sender.id] = 'interval'
+
+    elif data == b'backup_now':
+        backup_channel_temp[sender.id] = 'restore'
+        buttons = [[Button.inline('🔙 Back', b'setting_backup')]]
+        await event.edit('💾 BACKUP NOW\n\n📤 Send me the database file (.db) to restore.\n\n⚠️ Warning: This will replace the current database!', buttons=buttons)
+
+    elif data == b'setting_tools_handler':
+        tools_map = [
+            ('number_info', '📱 Number Info', b'tool_number_info'),
+            ('aadhar_info', '🆔 Aadhar Info', b'tool_aadhar_info'),
+            ('aadhar_family', '👨‍👩‍👧‍👦 Aadhar to Family', b'tool_aadhar_family'),
+            ('vehicle_info', '🚗 Vehicle Info', b'tool_vehicle_info'),
+            ('ifsc_info', '🏦 IFSC Info', b'tool_ifsc_info'),
+            ('pak_num', '🇵🇰 Pak Num Info', b'tool_pak_num'),
+            ('pincode_info', '📍 Pin Code Info', b'tool_pincode_info'),
+            ('imei_info', '📱 IMEI Info', b'tool_imei_info'),
+            ('ip_info', '🌐 IP Info', b'tool_ip_info'),
+        ]
+
+        buttons = [
+            [Button.inline(tools_map[0][1], tools_map[0][2])],
+            [Button.inline(tools_map[1][1], tools_map[1][2]), Button.inline(tools_map[2][1], tools_map[2][2])],
+            [Button.inline(tools_map[3][1], tools_map[3][2]), Button.inline(tools_map[4][1], tools_map[4][2])],
+            [Button.inline(tools_map[5][1], tools_map[5][2]), Button.inline(tools_map[6][1], tools_map[6][2])],
+            [Button.inline(tools_map[7][1], tools_map[7][2]), Button.inline(tools_map[8][1], tools_map[8][2])],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+
+        tools_text = "🛠️ TOOLS HANDLER\n\nManage Tools (Active/Inactive):"
+        await event.edit(tools_text, buttons=buttons)
+
+    elif data == b'tool_number_info':
+        status = get_tool_status('number_info')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_number_add_api'), Button.inline('➖ Remove API', b'tool_number_remove_api')],
+            [Button.inline('📋 All API', b'tool_number_all_api'), Button.inline('📊 Status', b'tool_number_status')],
+            [Button.inline(f'{status_text}', b'tool_number_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('📱 NUMBER INFO\n\nManage Number Info APIs', buttons=buttons)
+
+    elif data == b'tool_number_toggle':
+        current_status = get_tool_status('number_info')
+        set_tool_status('number_info', not current_status)
+        new_status = get_tool_status('number_info')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_number_add_api'), Button.inline('➖ Remove API', b'tool_number_remove_api')],
+            [Button.inline('📋 All API', b'tool_number_all_api'), Button.inline('📊 Status', b'tool_number_status')],
+            [Button.inline(f'{status_text}', b'tool_number_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('📱 NUMBER INFO\n\nManage Number Info APIs', buttons=buttons)
+
+    elif data == b'tool_number_add_api':
+        tool_api_action[sender.id] = 'number_info'
+        placeholder = TOOL_CONFIG['number_info']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_number_info')]]
+        await event.edit(f'➕ ADD API for Number Info\n\nSend API URL with placeholder {placeholder}\n\nExample:\nhttps://api.example.com/search?number={placeholder}', buttons=buttons)
+
+    elif data == b'tool_number_remove_api':
+        apis = get_tool_apis('number_info')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_number_info')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_number_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_number_info')])
+            await event.edit('➖ REMOVE API\n\nSelect API to remove:', buttons=buttons)
+
+    elif data.startswith(b'remove_number_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('number_info', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_number_info')]])
+
+    elif data == b'tool_number_all_api':
+        apis = get_tool_apis('number_info')
+        if not apis:
+            text = '📋 ALL APIs\n\nNo APIs configured yet.'
+        else:
+            text = f'📋 ALL APIs ({len(apis)})\n\n'
+            for i, api in enumerate(apis, 1):
+                text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_number_info')]])
+
+    elif data == b'tool_number_status':
+        apis = get_tool_apis('number_info')
+        status = get_tool_status('number_info')
+        text = f'📊 NUMBER INFO STATUS\n\n'
+        text += f'Tool Status: {"✅ Active" if status else "❌ Inactive"}\n'
+        text += f'APIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_number_info')]])
+
+    elif data == b'tool_aadhar_info':
+        status = get_tool_status('aadhar_info')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_aadhar_add_api'), Button.inline('➖ Remove API', b'tool_aadhar_remove_api')],
+            [Button.inline('📋 All API', b'tool_aadhar_all_api'), Button.inline('📊 Status', b'tool_aadhar_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_aadhar_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🆔 AADHAR INFO\n\nManage Aadhar Info APIs', buttons=buttons)
+
+    elif data == b'tool_aadhar_toggle':
+        current_status = get_tool_status('aadhar_info')
+        set_tool_status('aadhar_info', not current_status)
+        new_status = get_tool_status('aadhar_info')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_aadhar_add_api'), Button.inline('➖ Remove API', b'tool_aadhar_remove_api')],
+            [Button.inline('📋 All API', b'tool_aadhar_all_api'), Button.inline('📊 Status', b'tool_aadhar_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_aadhar_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🆔 AADHAR INFO\n\nManage Aadhar Info APIs', buttons=buttons)
+
+    elif data == b'tool_aadhar_add_api':
+        tool_api_action[sender.id] = 'aadhar_info'
+        placeholder = TOOL_CONFIG['aadhar_info']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_aadhar_info')]]
+        await event.edit(f'➕ ADD API for Aadhar Info\n\nSend API URL with placeholder {placeholder}\n\nExample:\nhttps://api.example.com/ aadhar?id={placeholder}', buttons=buttons)
+
+    elif data == b'tool_aadhar_remove_api':
+        apis = get_tool_apis('aadhar_info')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_aadhar_info')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_aadhar_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_aadhar_info')])
+            await event.edit('➖ REMOVE API\n\nSelect API to remove:', buttons=buttons)
+
+    elif data.startswith(b'remove_aadhar_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('aadhar_info', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_aadhar_info')]])
+
+    elif data == b'tool_aadhar_all_api':
+        apis = get_tool_apis('aadhar_info')
+        if not apis:
+            text = '📋 ALL APIs\n\nNo APIs configured yet.'
+        else:
+            text = f'📋 ALL APIs ({len(apis)})\n\n'
+            for i, api in enumerate(apis, 1):
+                text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_aadhar_info')]])
+
+    elif data == b'tool_aadhar_status':
+        apis = get_tool_apis('aadhar_info')
+        status = get_tool_status('aadhar_info')
+        text = f'📊 AADHAR INFO STATUS\n\n'
+        text += f'Tool Status: {"✅ Active" if status else "❌ Inactive"}\n'
+        text += f'APIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_aadhar_info')]])
+
+    elif data == b'tool_aadhar_family':
+        status = get_tool_status('aadhar_family')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_family_add_api'), Button.inline('➖ Remove API', b'tool_family_remove_api')],
+            [Button.inline('📋 All API', b'tool_family_all_api'), Button.inline('📊 Status', b'tool_family_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_family_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('👨‍👩‍👧‍👦 AADHAR TO FAMILY\n\nManage Aadhar to Family APIs', buttons=buttons)
+
+    elif data == b'tool_family_toggle':
+        current_status = get_tool_status('aadhar_family')
+        set_tool_status('aadhar_family', not current_status)
+        new_status = get_tool_status('aadhar_family')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_family_add_api'), Button.inline('➖ Remove API', b'tool_family_remove_api')],
+            [Button.inline('📋 All API', b'tool_family_all_api'), Button.inline('📊 Status', b'tool_family_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_family_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('👨‍👩‍👧‍👦 AADHAR TO FAMILY\n\nManage Aadhar to Family APIs', buttons=buttons)
+
+    elif data == b'tool_family_add_api':
+        tool_api_action[sender.id] = 'aadhar_family'
+        placeholder = TOOL_CONFIG['aadhar_family']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_aadhar_family')]]
+        await event.edit(f'➕ ADD API for Aadhar Family\n\nSend API URL with placeholder {placeholder}', buttons=buttons)
+
+    elif data == b'tool_family_remove_api':
+        apis = get_tool_apis('aadhar_family')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_aadhar_family')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_family_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_aadhar_family')])
+            await event.edit('➖ REMOVE API\n\nSelect API to remove:', buttons=buttons)
+
+    elif data.startswith(b'remove_family_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('aadhar_family', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_aadhar_family')]])
+
+    elif data == b'tool_family_all_api':
+        apis = get_tool_apis('aadhar_family')
+        if not apis:
+            text = '📋 ALL APIs\n\nNo APIs configured yet.'
+        else:
+            text = f'📋 ALL APIs ({len(apis)})\n\n'
+            for i, api in enumerate(apis, 1):
+                text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_aadhar_family')]])
+
+    elif data == b'tool_family_status':
+        apis = get_tool_apis('aadhar_family')
+        status = get_tool_status('aadhar_family')
+        text = f'📊 AADHAR FAMILY STATUS\n\n'
+        text += f'Tool Status: {"✅ Active" if status else "❌ Inactive"}\n'
+        text += f'APIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_aadhar_family')]])
+
+    elif data == b'tool_vehicle_info':
+        status = get_tool_status('vehicle_info')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_vehicle_add_api'), Button.inline('➖ Remove API', b'tool_vehicle_remove_api')],
+            [Button.inline('📋 All API', b'tool_vehicle_all_api'), Button.inline('📊 Status', b'tool_vehicle_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_vehicle_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🚗 VEHICLE INFO\n\nManage Vehicle Info APIs', buttons=buttons)
+
+    elif data == b'tool_vehicle_toggle':
+        current_status = get_tool_status('vehicle_info')
+        set_tool_status('vehicle_info', not current_status)
+        new_status = get_tool_status('vehicle_info')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_vehicle_add_api'), Button.inline('➖ Remove API', b'tool_vehicle_remove_api')],
+            [Button.inline('📋 All API', b'tool_vehicle_all_api'), Button.inline('📊 Status', b'tool_vehicle_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_vehicle_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🚗 VEHICLE INFO\n\nManage Vehicle Info APIs', buttons=buttons)
+
+    elif data == b'tool_ifsc_info':
+        status = get_tool_status('ifsc_info')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_ifsc_add_api'), Button.inline('➖ Remove API', b'tool_ifsc_remove_api')],
+            [Button.inline('📋 All API', b'tool_ifsc_all_api'), Button.inline('📊 Status', b'tool_ifsc_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_ifsc_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🏦 IFSC INFO\n\nManage IFSC Info APIs', buttons=buttons)
+
+    elif data == b'tool_ifsc_toggle':
+        current_status = get_tool_status('ifsc_info')
+        set_tool_status('ifsc_info', not current_status)
+        new_status = get_tool_status('ifsc_info')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_ifsc_add_api'), Button.inline('➖ Remove API', b'tool_ifsc_remove_api')],
+            [Button.inline('📋 All API', b'tool_ifsc_all_api'), Button.inline('📊 Status', b'tool_ifsc_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_ifsc_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🏦 IFSC INFO\n\nManage IFSC Info APIs', buttons=buttons)
+
+    elif data == b'tool_pak_num':
+        status = get_tool_status('pak_num')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_pak_add_api'), Button.inline('➖ Remove API', b'tool_pak_remove_api')],
+            [Button.inline('📋 All API', b'tool_pak_all_api'), Button.inline('📊 Status', b'tool_pak_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_pak_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🇵🇰 PAK NUM INFO\n\nManage Pak Number APIs', buttons=buttons)
+
+    elif data == b'tool_pak_toggle':
+        current_status = get_tool_status('pak_num')
+        set_tool_status('pak_num', not current_status)
+        new_status = get_tool_status('pak_num')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_pak_add_api'), Button.inline('➖ Remove API', b'tool_pak_remove_api')],
+            [Button.inline('📋 All API', b'tool_pak_all_api'), Button.inline('📊 Status', b'tool_pak_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_pak_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🇵🇰 PAK NUM INFO\n\nManage Pak Number APIs', buttons=buttons)
+
+    elif data == b'tool_pincode_info':
+        status = get_tool_status('pincode_info')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_pin_add_api'), Button.inline('➖ Remove API', b'tool_pin_remove_api')],
+            [Button.inline('📋 All API', b'tool_pin_all_api'), Button.inline('📊 Status', b'tool_pin_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_pin_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('📍 PIN CODE INFO\n\nManage Pin Code APIs', buttons=buttons)
+
+    elif data == b'tool_pin_toggle':
+        current_status = get_tool_status('pincode_info')
+        set_tool_status('pincode_info', not current_status)
+        new_status = get_tool_status('pincode_info')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_pin_add_api'), Button.inline('➖ Remove API', b'tool_pin_remove_api')],
+            [Button.inline('📋 All API', b'tool_pin_all_api'), Button.inline('📊 Status', b'tool_pin_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_pin_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('📍 PIN CODE INFO\n\nManage Pin Code APIs', buttons=buttons)
+
+    elif data == b'tool_imei_info':
+        status = get_tool_status('imei_info')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_imei_add_api'), Button.inline('➖ Remove API', b'tool_imei_remove_api')],
+            [Button.inline('📋 All API', b'tool_imei_all_api'), Button.inline('📊 Status', b'tool_imei_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_imei_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('📱 IMEI INFO\n\nManage IMEI Info APIs', buttons=buttons)
+
+    elif data == b'tool_imei_toggle':
+        current_status = get_tool_status('imei_info')
+        set_tool_status('imei_info', not current_status)
+        new_status = get_tool_status('imei_info')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_imei_add_api'), Button.inline('➖ Remove API', b'tool_imei_remove_api')],
+            [Button.inline('📋 All API', b'tool_imei_all_api'), Button.inline('📊 Status', b'tool_imei_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_imei_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('📱 IMEI INFO\n\nManage IMEI Info APIs', buttons=buttons)
+
+    elif data == b'tool_ip_info':
+        status = get_tool_status('ip_info')
+        status_text = '✅ Active' if status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_ip_add_api'), Button.inline('➖ Remove API', b'tool_ip_remove_api')],
+            [Button.inline('📋 All API', b'tool_ip_all_api'), Button.inline('📊 Status', b'tool_ip_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_ip_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🌐 IP INFO\n\nManage IP Info APIs', buttons=buttons)
+
+    elif data == b'tool_ip_toggle':
+        current_status = get_tool_status('ip_info')
+        set_tool_status('ip_info', not current_status)
+        new_status = get_tool_status('ip_info')
+        status_text = '✅ Active' if new_status else '❌ Inactive'
+        buttons = [
+            [Button.inline('➕ Add API', b'tool_ip_add_api'), Button.inline('➖ Remove API', b'tool_ip_remove_api')],
+            [Button.inline('📋 All API', b'tool_ip_all_api'), Button.inline('📊 Status', b'tool_ip_status')],
+            [Button.inline(f'🔄 {status_text}', b'tool_ip_toggle')],
+            [Button.inline('🔙 Back', b'setting_tools_handler')],
+        ]
+        await event.edit('🌐 IP INFO\n\nManage IP Info APIs', buttons=buttons)
+
+    # Vehicle Info API Management
+    elif data == b'tool_vehicle_add_api':
+        tool_api_action[sender.id] = 'vehicle_info'
+        placeholder = TOOL_CONFIG['vehicle_info']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_vehicle_info')]]
+        await event.edit(f'➕ ADD API for Vehicle Info\n\nSend API URL with placeholder {placeholder}', buttons=buttons)
+
+    elif data == b'tool_vehicle_remove_api':
+        apis = get_tool_apis('vehicle_info')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_vehicle_info')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_vehicle_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_vehicle_info')])
+            await event.edit('➖ REMOVE API', buttons=buttons)
+
+    elif data.startswith(b'remove_vehicle_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('vehicle_info', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_vehicle_info')]])
+
+    elif data == b'tool_vehicle_all_api':
+        apis = get_tool_apis('vehicle_info')
+        text = f'📋 ALL APIs ({len(apis)})\n\n' if apis else '📋 ALL APIs\n\nNo APIs configured yet.'
+        for i, api in enumerate(apis, 1):
+            text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_vehicle_info')]])
+
+    elif data == b'tool_vehicle_status':
+        apis = get_tool_apis('vehicle_info')
+        status = get_tool_status('vehicle_info')
+        text = f'📊 VEHICLE INFO STATUS\n\nTool Status: {"✅ Active" if status else "❌ Inactive"}\nAPIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_vehicle_info')]])
+
+    # IFSC Info API Management
+    elif data == b'tool_ifsc_add_api':
+        tool_api_action[sender.id] = 'ifsc_info'
+        placeholder = TOOL_CONFIG['ifsc_info']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_ifsc_info')]]
+        await event.edit(f'➕ ADD API for IFSC Info\n\nSend API URL with placeholder {placeholder}', buttons=buttons)
+
+    elif data == b'tool_ifsc_remove_api':
+        apis = get_tool_apis('ifsc_info')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_ifsc_info')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_ifsc_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_ifsc_info')])
+            await event.edit('➖ REMOVE API', buttons=buttons)
+
+    elif data.startswith(b'remove_ifsc_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('ifsc_info', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_ifsc_info')]])
+
+    elif data == b'tool_ifsc_all_api':
+        apis = get_tool_apis('ifsc_info')
+        text = f'📋 ALL APIs ({len(apis)})\n\n' if apis else '📋 ALL APIs\n\nNo APIs configured yet.'
+        for i, api in enumerate(apis, 1):
+            text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_ifsc_info')]])
+
+    elif data == b'tool_ifsc_status':
+        apis = get_tool_apis('ifsc_info')
+        status = get_tool_status('ifsc_info')
+        text = f'📊 IFSC INFO STATUS\n\nTool Status: {"✅ Active" if status else "❌ Inactive"}\nAPIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_ifsc_info')]])
+
+    # Pakistan Number API Management
+    elif data == b'tool_pak_add_api':
+        tool_api_action[sender.id] = 'pak_num'
+        placeholder = TOOL_CONFIG['pak_num']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_pak_num')]]
+        await event.edit(f'➕ ADD API for Pak Number\n\nSend API URL with placeholder {placeholder}', buttons=buttons)
+
+    elif data == b'tool_pak_remove_api':
+        apis = get_tool_apis('pak_num')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_pak_num')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_pak_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_pak_num')])
+            await event.edit('➖ REMOVE API', buttons=buttons)
+
+    elif data.startswith(b'remove_pak_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('pak_num', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_pak_num')]])
+
+    elif data == b'tool_pak_all_api':
+        apis = get_tool_apis('pak_num')
+        text = f'📋 ALL APIs ({len(apis)})\n\n' if apis else '📋 ALL APIs\n\nNo APIs configured yet.'
+        for i, api in enumerate(apis, 1):
+            text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_pak_num')]])
+
+    elif data == b'tool_pak_status':
+        apis = get_tool_apis('pak_num')
+        status = get_tool_status('pak_num')
+        text = f'📊 PAK NUMBER STATUS\n\nTool Status: {"✅ Active" if status else "❌ Inactive"}\nAPIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_pak_num')]])
+
+    # Pincode API Management
+    elif data == b'tool_pin_add_api':
+        tool_api_action[sender.id] = 'pincode_info'
+        placeholder = TOOL_CONFIG['pincode_info']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_pincode_info')]]
+        await event.edit(f'➕ ADD API for Pincode\n\nSend API URL with placeholder {placeholder}', buttons=buttons)
+
+    elif data == b'tool_pin_remove_api':
+        apis = get_tool_apis('pincode_info')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_pincode_info')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_pin_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_pincode_info')])
+            await event.edit('➖ REMOVE API', buttons=buttons)
+
+    elif data.startswith(b'remove_pin_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('pincode_info', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_pincode_info')]])
+
+    elif data == b'tool_pin_all_api':
+        apis = get_tool_apis('pincode_info')
+        text = f'📋 ALL APIs ({len(apis)})\n\n' if apis else '📋 ALL APIs\n\nNo APIs configured yet.'
+        for i, api in enumerate(apis, 1):
+            text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_pincode_info')]])
+
+    elif data == b'tool_pin_status':
+        apis = get_tool_apis('pincode_info')
+        status = get_tool_status('pincode_info')
+        text = f'📊 PINCODE STATUS\n\nTool Status: {"✅ Active" if status else "❌ Inactive"}\nAPIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_pincode_info')]])
+
+    # IMEI API Management
+    elif data == b'tool_imei_add_api':
+        tool_api_action[sender.id] = 'imei_info'
+        placeholder = TOOL_CONFIG['imei_info']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_imei_info')]]
+        await event.edit(f'➕ ADD API for IMEI\n\nSend API URL with placeholder {placeholder}', buttons=buttons)
+
+    elif data == b'tool_imei_remove_api':
+        apis = get_tool_apis('imei_info')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_imei_info')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_imei_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_imei_info')])
+            await event.edit('➖ REMOVE API', buttons=buttons)
+
+    elif data.startswith(b'remove_imei_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('imei_info', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_imei_info')]])
+
+    elif data == b'tool_imei_all_api':
+        apis = get_tool_apis('imei_info')
+        text = f'📋 ALL APIs ({len(apis)})\n\n' if apis else '📋 ALL APIs\n\nNo APIs configured yet.'
+        for i, api in enumerate(apis, 1):
+            text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_imei_info')]])
+
+    elif data == b'tool_imei_status':
+        apis = get_tool_apis('imei_info')
+        status = get_tool_status('imei_info')
+        text = f'📊 IMEI STATUS\n\nTool Status: {"✅ Active" if status else "❌ Inactive"}\nAPIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_imei_info')]])
+
+    # IP Info API Management
+    elif data == b'tool_ip_add_api':
+        tool_api_action[sender.id] = 'ip_info'
+        placeholder = TOOL_CONFIG['ip_info']['placeholder']
+        buttons = [[Button.inline('❌ Cancel', b'tool_ip_info')]]
+        await event.edit(f'➕ ADD API for IP Info\n\nSend API URL with placeholder {placeholder}', buttons=buttons)
+
+    elif data == b'tool_ip_remove_api':
+        apis = get_tool_apis('ip_info')
+        if not apis:
+            await event.edit('❌ No APIs found!', buttons=[[Button.inline('🔙 Back', b'tool_ip_info')]])
+        else:
+            buttons = []
+            for api in apis:
+                api_preview = api['url'][:40] + '...' if len(api['url']) > 40 else api['url']
+                buttons.append([Button.inline(f'❌ {api_preview}', f'remove_ip_api_{api["id"]}'.encode())])
+            buttons.append([Button.inline('🔙 Back', b'tool_ip_info')])
+            await event.edit('➖ REMOVE API', buttons=buttons)
+
+    elif data.startswith(b'remove_ip_api_'):
+        api_id = int(data.decode().split('_')[3])
+        remove_tool_api('ip_info', api_id)
+        await event.edit('✅ API removed!', buttons=[[Button.inline('🔙 Back', b'tool_ip_info')]])
+
+    elif data == b'tool_ip_all_api':
+        apis = get_tool_apis('ip_info')
+        text = f'📋 ALL APIs ({len(apis)})\n\n' if apis else '📋 ALL APIs\n\nNo APIs configured yet.'
+        for i, api in enumerate(apis, 1):
+            text += f'{i}. {api["url"]}\n   Added: {api["added_date"][:10]}\n\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_ip_info')]])
+
+    elif data == b'tool_ip_status':
+        apis = get_tool_apis('ip_info')
+        status = get_tool_status('ip_info')
+        text = f'📊 IP INFO STATUS\n\nTool Status: {"✅ Active" if status else "❌ Inactive"}\nAPIs Configured: {len(apis)}\n'
+        await event.edit(text, buttons=[[Button.inline('🔙 Back', b'tool_ip_info')]])
+
+    elif data == b'setting_groups':
+        groups = get_all_groups()
+        buttons = [
+            [Button.inline('➕ Add', b'group_add'), Button.inline('➖ Remove', b'group_remove')],
+            [Button.inline('📋 List', b'group_list_page_1'), Button.inline('👋 Welcome', b'group_welcome_text')],
+            [Button.inline('⚙️ Settings', b'group_setting')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        group_text = f"GROUPS\n\nConnected: {len(groups)}\n\nWhat do you want to do?"
+        await event.edit(group_text, buttons=buttons)
+
+    elif data == b'group_setting':
+        await event.edit('⚙️ Group Settings: Coming soon...', buttons=[[Button.inline('🔙 Back', b'setting_groups')]])
+
+    elif data == b'check_subscription':
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'not_subscribed':
+                msg = '❌ You still need to join these channels:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                buttons.append([Button.inline('✅ Check Again', b'check_subscription')])
+                await event.edit(msg, buttons=buttons)
+            else:
+                await event.answer('🚫 Access Denied!', alert=True)
+        else:
+            # User has joined all channels, show normal menu
+            stats = get_stats()
+            user_data = get_user(sender.id)
+            buttons = [
+                [Button.inline('🛠️ Tools', b'user_tools')],
+                [Button.inline('👤 Profile', b'user_profile'), Button.inline('❓ Help', b'user_help')],
+                [Button.inline('ℹ️ About', b'user_about')],
+            ]
+            custom_text = get_setting('user_start_text', get_default_user_text())
+            user_text = format_text(custom_text, sender, stats, user_data)
+            await event.edit(user_text, buttons=buttons)
+
+    elif data == b'owner_back':
+        buttons = [
+            [Button.inline('🛠️ Tools', b'owner_tools')],
+            [Button.inline('👥 Users', b'owner_users'), Button.inline('📢 Broadcast', b'owner_broadcast')],
+            [Button.inline('📊 Status', b'owner_status'), Button.inline('⚙️ Settings', b'owner_settings')],
+        ]
+        stats = get_stats()
+        custom_text = get_setting('owner_start_text', get_default_owner_text())
+        owner_text = format_text(custom_text, sender, stats, None)
+        await event.edit(owner_text, buttons=buttons)
+
+    elif data == b'owner_users':
+        buttons = [
+            [Button.inline('🚫 Ban', b'user_ban'), Button.inline('✅ Unban', b'user_unban')],
+            [Button.inline('ℹ️ Info', b'user_info')],
+            [Button.inline('🔙 Back', b'owner_back')],
+        ]
+        await event.edit('👥 USERS PANEL\n\nChoose an action:', buttons=buttons)
+
+    elif data == b'user_ban':
+        user_action_type[sender.id] = 'ban'
+        buttons = [[Button.inline('❌ Cancel', b'owner_users')]]
+        await event.edit('🚫 BAN USER\n\nEnter user ID or username (@username):', buttons=buttons)
+
+    elif data == b'user_unban':
+        user_action_type[sender.id] = 'unban'
+        buttons = [[Button.inline('❌ Cancel', b'owner_users')]]
+        await event.edit('✅ UNBAN USER\n\nEnter user ID or username (@username):', buttons=buttons)
+
+    elif data == b'user_info':
+        user_action_type[sender.id] = 'info'
+        buttons = [[Button.inline('❌ Cancel', b'owner_users')]]
+        await event.edit('ℹ️ USER INFO\n\nEnter user ID or username (@username):', buttons=buttons)
+
+    elif data == b'owner_broadcast':
+        broadcast_temp[sender.id] = True
+        buttons = [[Button.inline('❌ Cancel', b'owner_back')]]
+        help_text = "Type your broadcast message:\n\nAvailable Placeholders:\n{greeting} - Good Morning/Afternoon/Evening/Night\n{first_name} - User's first name\n{username} - User's username\n{user_id} - User's ID\n{total_users} - Total users count\n{active_users} - Active users count\n{date} - Today's date (DD-MM-YYYY)\n{time} - Current time (HH:MM:SS)\n{datetime} - Full date and time\n{bot_name} - Bot name"
+        await event.edit(help_text, buttons=buttons)
+
+    elif data == b'owner_status':
+        stats = get_stats()
+
+        # Get current date and time
+        current_date = datetime.now().strftime("%d-%m-%Y")
+        current_time = datetime.now().strftime("%H:%M:%S")
+
+        # Get active tools count
+        active_tools = get_all_active_tools()
+        tools_count = len(active_tools)
+
+        # Get channels and groups count
+        channels = get_all_channels()
+        groups = get_all_groups()
+
+        # Get backup info
+        backup_channel = get_backup_channel()
+        backup_interval = get_backup_interval()
+        last_backup = get_last_backup_time()
+
+        if last_backup:
+            try:
+                last_backup_dt = datetime.fromisoformat(last_backup)
+                last_backup_str = last_backup_dt.strftime("%d-%m-%Y %H:%M:%S")
+            except:
+                last_backup_str = "Never"
+        else:
+            last_backup_str = "Never"
+
+        # Build status text
+        status_text = f"📊 **BOT STATUS DASHBOARD**\n"
+        status_text += f"{'='*35}\n\n"
+
+        status_text += f"👥 **Users Statistics:**\n"
+        status_text += f"├ Total Users: {stats['total_users']}\n"
+        status_text += f"├ Active Users: {stats['active_users']}\n"
+        status_text += f"└ Banned Users: {stats['banned_users']}\n\n"
+
+        status_text += f"💬 **Messages:**\n"
+        status_text += f"└ Total Messages: {stats['total_messages']}\n\n"
+
+        status_text += f"🛠️ **Tools:**\n"
+        status_text += f"└ Active Tools: {tools_count}/9\n\n"
+
+        status_text += f"📺 **Channels & Groups:**\n"
+        status_text += f"├ Sub-Force Channels: {len(channels)}\n"
+        status_text += f"└ Connected Groups: {len(groups)}\n\n"
+
+        status_text += f"💾 **Backup Info:**\n"
+        if backup_channel:
+            status_text += f"├ Channel: @{backup_channel['username']}\n"
+            status_text += f"├ Interval: {backup_interval} minutes\n"
+            status_text += f"└ Last Backup: {last_backup_str}\n\n"
+        else:
+            status_text += f"└ No backup configured\n\n"
+
+        status_text += f"⏰ **System Time:**\n"
+        status_text += f"├ Date: {current_date}\n"
+        status_text += f"└ Time: {current_time}\n\n"
+
+        status_text += f"{'='*35}\n"
+        status_text += f"✅ **Status:** Online & Running"
+
+        buttons = [[Button.inline('🔄 Refresh', b'owner_status'), Button.inline('🔙 Back', b'owner_back')]]
+        await event.edit(status_text, buttons=buttons)
+
+    elif data == b'owner_tools':
+        tools_map = [
+            ('number_info', '📱 Number Info', b'use_number_info'),
+            ('aadhar_info', '🆔 Aadhar Info', b'use_aadhar_info'),
+            ('aadhar_family', '👨‍👩‍👧‍👦 Aadhar to Family', b'use_aadhar_family'),
+            ('vehicle_info', '🚗 Vehicle Info', b'use_vehicle_info'),
+            ('ifsc_info', '🏦 IFSC Info', b'use_ifsc_info'),
+            ('pak_num', '🇵🇰 Pak Num Info', b'use_pak_num'),
+            ('pincode_info', '📍 Pin Code Info', b'use_pincode_info'),
+            ('imei_info', '📱 IMEI Info', b'use_imei_info'),
+            ('ip_info', '🌐 IP Info', b'use_ip_info'),
+        ]
+
+        active_tools = []
+        for tool_key, tool_name, callback in tools_map:
+            if get_tool_status(tool_key):
+                active_tools.append((tool_name, callback))
+
+        buttons = []
+        for i in range(0, len(active_tools), 2):
+            if i + 1 < len(active_tools):
+                buttons.append([Button.inline(active_tools[i][0], active_tools[i][1]), Button.inline(active_tools[i+1][0], active_tools[i+1][1])])
+            else:
+                buttons.append([Button.inline(active_tools[i][0], active_tools[i][1])])
+
+        buttons.append([Button.inline('🔙 Back', b'owner_back')])
+        await event.edit('🛠️ TOOLS\n\nSelect a tool to use:', buttons=buttons)
+
+    elif data == b'user_tools':
+        # Check access before showing tools
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.answer('🚫 You are BANNED!', alert=True)
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                buttons.append([Button.inline('✅ Check Again', b'check_subscription')])
+                await event.edit(msg, buttons=buttons)
+            return
+
+        tools_map = [
+            ('number_info', '📱 Number Info', b'use_number_info'),
+            ('aadhar_info', '🆔 Aadhar Info', b'use_aadhar_info'),
+            ('aadhar_family', '👨‍👩‍👧‍👦 Aadhar to Family', b'use_aadhar_family'),
+            ('vehicle_info', '🚗 Vehicle Info', b'use_vehicle_info'),
+            ('ifsc_info', '🏦 IFSC Info', b'use_ifsc_info'),
+            ('pak_num', '🇵🇰 Pak Num Info', b'use_pak_num'),
+            ('pincode_info', '📍 Pin Code Info', b'use_pincode_info'),
+            ('imei_info', '📱 IMEI Info', b'use_imei_info'),
+            ('ip_info', '🌐 IP Info', b'use_ip_info'),
+        ]
+
+        active_tools = []
+        for tool_key, tool_name, callback in tools_map:
+            if get_tool_status(tool_key):
+                active_tools.append((tool_name, callback))
+
+        buttons = []
+        for i in range(0, len(active_tools), 2):
+            if i + 1 < len(active_tools):
+                buttons.append([Button.inline(active_tools[i][0], active_tools[i][1]), Button.inline(active_tools[i+1][0], active_tools[i+1][1])])
+            else:
+                buttons.append([Button.inline(active_tools[i][0], active_tools[i][1])])
+
+        buttons.append([Button.inline('🔙 Back', b'user_back')])
+        await event.edit('🛠️ TOOLS\n\nSelect a tool to use:', buttons=buttons)
+
+    elif data == b'user_profile':
+        user = get_user(sender.id)
+        if user:
+            joined_date = user['joined'][:10] if user['joined'] else 'Unknown'
+            joined_time = user['joined'][11:19] if len(user['joined']) > 11 else ''
+            status_emoji = '✅' if not user['banned'] else '🚫'
+            status_text = 'ACTIVE' if not user['banned'] else 'BANNED'
+            
+            profile_text = f"👤 **YOUR PROFILE**\n"
+            profile_text += f"{'='*30}\n\n"
+            profile_text += f"📝 **Name:** {user['first_name']}\n"
+            profile_text += f"🔖 **Username:** @{user['username']}\n"
+            profile_text += f"🆔 **User ID:** {user['user_id']}\n\n"
+            profile_text += f"💬 **Messages Sent:** {user['messages']}\n"
+            profile_text += f"📅 **Joined Date:** {joined_date}\n"
+            if joined_time:
+                profile_text += f"⏰ **Joined Time:** {joined_time}\n"
+            profile_text += f"\n{status_emoji} **Status:** {status_text}\n"
+            profile_text += f"📊 **Account Type:** {user['status'].upper()}\n\n"
+            profile_text += f"{'='*30}\n"
+            profile_text += f"✨ Thank you for using this bot!"
+        else:
+            profile_text = "❌ Profile not found!\n\nPlease use /start to register."
+        await event.edit(profile_text, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+
+    elif data == b'user_help':
+        current_help = get_setting('user_help_text', '❓ **HELP DESK**\n\n🤖 **Bot Commands:**\n/start - Start the bot\n/hello - Get a greeting\n/time - Get current time\n\n🛠️ **Available Tools:**\n/num - Phone number lookup\n/adhar - Aadhar info\n/family - Aadhar family lookup\n/vhe - Vehicle information\n/ifsc - IFSC code details\n/pak - Pakistan number info\n/pin - PIN code lookup\n/imei - IMEI information\n/ip - IP address details\n\n📌 **Usage:**\nSelect a tool from the menu or use commands directly.\n\n💡 **Tip:**\nAll tools provide instant results in JSON format.')
+        user_data = get_user(sender.id)
+        formatted_help = format_text(current_help, sender, get_stats(), user_data)
+        await event.edit(formatted_help, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+
+    elif data == b'user_about':
+        # Use customizable about text from settings
+        current_about = get_setting('user_about_text', 'ℹ️ **ABOUT BOT**\n\n🤖 **Multi-Tool Information Bot**\n\n📊 **Version:** 2.0\n🐍 **Framework:** Telethon\n💾 **Database:** SQLite\n🌐 **Web Dashboard:** Flask\n\n👥 **Total Users:** {total_users}\n✅ **Active Users:** {active_users}\n\n📅 **Date:** {date}\n⏰ **Time:** {time}\n\n⚡ **Features:**\n• 9 Information Tools\n• Group Management\n• Broadcasting System\n• Web Dashboard\n• Auto Backup\n\n💡 **Powered by Telethon MTProto**')
+        
+        user_data = get_user(sender.id)
+        stats = get_stats()
+        
+        # Format about text with placeholders
+        formatted_about = format_text(current_about, sender, stats, user_data)
+        
+        # Add powered by link at the end if not already in custom text
+        if 'KissuHQ' not in formatted_about and 'Kissu' not in formatted_about:
+            formatted_about += f"\n\n**💡 Powered by [༄ᶦᶰᵈ᭄ℓєgєи∂✧kìຮຮu࿐™](t.me/KissuHQ)**"
+        
+        await event.edit(formatted_about, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+
+    elif data == b'user_back':
+        buttons = [
+            [Button.inline('🛠️ Tools', b'user_tools')],
+            [Button.inline('👤 Profile', b'user_profile'), Button.inline('❓ Help', b'user_help')],
+            [Button.inline('ℹ️ About', b'user_about')],
+        ]
+        stats = get_stats()
+        user_data = get_user(sender.id)
+        custom_text = get_setting('user_start_text', get_default_user_text())
+        user_text = format_text(custom_text, sender, stats, user_data)
+        await event.edit(user_text, buttons=buttons)
+
+    elif data.startswith(b'use_'):
+        tool_key = data.decode().replace('use_', '')
+        if tool_key in TOOL_CONFIG:
+            tool_session[sender.id] = tool_key
+            back_btn = b'owner_tools' if sender.id == owner_id else b'user_tools'
+            buttons = [[Button.inline('❌ Cancel', back_btn)]]
+            await event.edit(TOOL_CONFIG[tool_key]['prompt'], buttons=buttons)
+
+    elif data == b'broadcast_detail':
+        stats = broadcast_stats.get(sender.id)
+        if stats:
+            # Create the detail text file content
+            file_content = "📋 BROADCAST REPORT\n"
+            file_content += f"{'='*50}\n\n"
+            file_content += f"✅ SUCCESSFULLY SENT: {stats['sent_count']}\n"
+            file_content += f"{'-'*50}\n"
+
+            if stats['sent']:
+                for user_info in stats['sent']:
+                    file_content += f"{user_info}\n"
+            else:
+                file_content += "No users\n"
+
+            file_content += f"\n\n❌ FAILED TO SEND: {stats['failed_count']}\n"
+            file_content += f"{'-'*50}\n"
+
+            if stats['failed']:
+                for user_info in stats['failed']:
+                    file_content += f"{user_info}\n"
+            else:
+                file_content += "No failures\n"
+
+            file_content += f"\n\n{'='*50}\n"
+            file_content += f"Total Users: {stats['sent_count'] + stats['failed_count']}\n"
+
+            # Write to file
+            filename = f"broadcast_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(file_content)
+
+            # Send file
+            try:
+                await client.send_file(sender.id, filename)
+                await event.answer("📄 Report sent!", alert=False)
+            except Exception as e:
+                await event.answer(f"Error sending file: {str(e)}", alert=True)
+                print(f"[LOG] ❌ Error sending broadcast report: {e}")
+
+@client.on(events.NewMessage(incoming=True))
+async def message_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    # Handle database file restore (only for owner)
+    if sender.id == owner_id and event.file and event.file.name and event.file.name.endswith('.db'):
+        try:
+            db_file = get_db_file()
+
+            # Download the new database file
+            temp_file = "temp_restore.db"
+            await event.download_media(file=temp_file)
+
+            # Delete old database
+            if os.path.exists(db_file):
+                os.remove(db_file)
+                print(f"[LOG] 🗑️ Old database deleted")
+
+            # Replace with new database
+            os.rename(temp_file, db_file)
+            print(f"[LOG] ✅ Database restored from file")
+
+            await event.respond('✅ Database restored successfully!\n\n🔄 Bot restarting...')
+
+            # Restart bot to reload database
+            import sys
+            os.execv(sys.executable, ['python'] + sys.argv)
+
+        except Exception as e:
+            await event.respond(f'❌ Database restore failed: {str(e)}')
+            print(f"[LOG] ❌ Database restore error: {e}")
+
+        raise events.StopPropagation
+
+    # Handle API URL input
+    if sender.id in tool_api_action:
+        tool_name = tool_api_action[sender.id]
+        api_url = event.text.strip()
+
+        # Validate that URL contains the placeholder
+        placeholder = TOOL_CONFIG[tool_name]['placeholder']
+        if placeholder not in api_url:
+            await event.respond(f'❌ Invalid API URL!\n\nURL must contain placeholder: {placeholder}', buttons=[[Button.inline('🔙 Back', f'tool_{tool_name.split("_")[0]}_info'.encode())]])
+            raise events.StopPropagation
+
+        # Add API to database
+        add_tool_api(tool_name, api_url)
+        del tool_api_action[sender.id]
+
+        # Determine back button based on tool name
+        if tool_name == 'number_info':
+            back_btn = b'tool_number_info'
+        elif tool_name == 'aadhar_info':
+            back_btn = b'tool_aadhar_info'
+        elif tool_name == 'aadhar_family':
+            back_btn = b'tool_aadhar_family'
+        elif tool_name == 'vehicle_info':
+            back_btn = b'tool_vehicle_info'
+        elif tool_name == 'ifsc_info':
+            back_btn = b'tool_ifsc_info'
+        elif tool_name == 'pak_num':
+            back_btn = b'tool_pak_num'
+        elif tool_name == 'pincode_info':
+            back_btn = b'tool_pincode_info'
+        elif tool_name == 'imei_info':
+            back_btn = b'tool_imei_info'
+        elif tool_name == 'ip_info':
+            back_btn = b'tool_ip_info'
+        else:
+            back_btn = b'setting_tools_handler'
+
+        await event.respond(f'✅ API added successfully!\n\nURL: {api_url}', buttons=[[Button.inline('🔙 Back', back_btn)]])
+        raise events.StopPropagation
+
+    if sender.id in tool_session:
+        tool_key = tool_session[sender.id]
+        validator = VALIDATORS.get(tool_key)
+        if validator:
+            validated = validator(event.text)
+            if validated:
+                back_btn = b'owner_tools' if sender.id == owner_id else b'user_tools'
+                processing_msg = await event.respond('⏳ Processing...')
+
+                data, error = await call_tool_api(tool_key, validated)
+
+                if data:
+                    response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+                    if len(response) > 4000:
+                        response = response[:3997] + "..."
+                    await processing_msg.edit(response)
+                    asyncio.create_task(send_back_button_delayed(client, sender.id, processing_msg.id, back_btn, 2))
+                else:
+                    await processing_msg.edit(f"❌ Error: {error}", buttons=[[Button.inline('👈 Back', back_btn)]])
+
+                del tool_session[sender.id]
+            else:
+                back_btn = b'owner_tools' if sender.id == owner_id else b'user_tools'
+                await event.respond(f"❌ Invalid input!\n\n{TOOL_CONFIG[tool_key]['prompt']}", buttons=[[Button.inline('❌ Cancel', back_btn)]])
+        raise events.StopPropagation
+
+    if backup_channel_temp.get(sender.id) == 'interval':
+        try:
+            interval = int(event.text.strip())
+            if interval <= 0:
+                await event.respond('❌ Invalid interval! Must be a positive number.', buttons=[[Button.inline('🔙 Back', b'setting_backup')]])
+            else:
+                set_backup_interval(interval)
+                backup_channel_temp[sender.id] = None
+                backup_channel = get_backup_channel()
+                buttons = [
+                    [Button.inline('🔄 Change Channel', b'backup_change_channel')],
+                    [Button.inline('⏰ Interval Time', b'backup_interval'), Button.inline('💾 Backup Now', b'backup_now')],
+                    [Button.inline('🔙 Back', b'owner_settings')],
+                ]
+                backup_text = f"💾 BACKUP SETTINGS\n\n📺 Channel: {backup_channel['title']}\n@{backup_channel['username']}\n\n⏰ Interval: {interval} minutes\n\n✅ Interval updated successfully!"
+                await event.respond(backup_text, buttons=buttons)
+        except ValueError:
+            await event.respond('❌ Invalid number! Send interval in minutes.', buttons=[[Button.inline('🔙 Back', b'setting_backup')]])
+        raise events.StopPropagation
+
+    if backup_channel_temp.get(sender.id) == 'restore':
+        if event.file and event.file.name and event.file.name.endswith('.db'):
+            try:
+                db_file = get_db_file()
+
+                # Download the new database file
+                temp_file = "temp_restore.db"
+                await event.download_media(file=temp_file)
+
+                # Delete old database
+                if os.path.exists(db_file):
+                    os.remove(db_file)
+                    print(f"[LOG] 🗑️ Old database deleted")
+
+                # Replace with new database
+                os.rename(temp_file, db_file)
+                print(f"[LOG] ✅ Database restored from backup")
+
+                backup_channel_temp[sender.id] = None
+
+                await event.respond('✅ Database restored successfully!\n\n🔄 Bot restarting...')
+
+                # Restart bot to reload database
+                import sys
+                os.execv(sys.executable, ['python'] + sys.argv)
+
+            except Exception as e:
+                await event.respond(f'❌ Database restore failed: {str(e)}')
+                print(f"[LOG] ❌ Database restore error: {e}")
+                backup_channel_temp[sender.id] = None
+        else:
+            await event.respond('❌ Please send a valid .db database file!', buttons=[[Button.inline('🔙 Back', b'setting_backup')]])
+        raise events.StopPropagation
+
+    if sender.id == owner_id and backup_channel_temp.get(sender.id) == 'add':
+        ch_id = None
+        ch_name = None
+        ch_title = None
+
+        if event.forward and event.forward.chat:
+            try:
+                channel_entity = await client.get_entity(event.forward.chat)
+                ch_id = channel_entity.id
+                ch_name = channel_entity.username or str(channel_entity.id)
+                ch_title = channel_entity.title
+            except Exception as e:
+                await event.respond(f'❌ Error extracting channel: {str(e)}')
+                return
+        elif event.text:
+            ch_input = event.text.strip()
+            if ch_input.lstrip('-').isdigit():
+                ch_id = int(ch_input)
+                ch_name = ch_input
+                ch_title = ch_input
+            elif ch_input.startswith('@'):
+                try:
+                    channel_entity = await client.get_entity(ch_input)
+                    ch_id = channel_entity.id
+                    ch_name = channel_entity.username or str(channel_entity.id)
+                    ch_title = channel_entity.title
+                except Exception as e:
+                    await event.respond(f'❌ Error finding channel: {str(e)}')
+                    return
+            else:
+                await event.respond('❌ Invalid format. Use: ID number, @username, or forward message.', buttons=[[Button.inline('🔙 Back', b'setting_backup')]])
+                return
+
+        if not ch_id or not ch_name:
+            await event.respond('❌ Send one of: ID, @username, or forward a message.', buttons=[[Button.inline('🔙 Back', b'setting_backup')]])
+            return
+
+        set_backup_channel(ch_id, ch_name, ch_title)
+        backup_channel_temp[sender.id] = None
+        interval = get_backup_interval()
+        buttons = [
+            [Button.inline('🔄 Change Channel', b'backup_change_channel')],
+            [Button.inline('⏰ Interval Time', b'backup_interval'), Button.inline('💾 Backup Now', b'backup_now')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        backup_text = f"💾 BACKUP SETTINGS\n\n📺 Channel: {ch_title}\n@{ch_name}\n\n⏰ Interval: {interval} minutes\n\n✅ Backup channel set successfully!"
+        await event.respond(backup_text, buttons=buttons)
+        raise events.StopPropagation
+
+    if channel_action_temp.get(sender.id) == 'add':
+        ch_name = None
+        ch_title = None
+
+        if event.forward and event.forward.chat:
+            try:
+                channel_entity = await client.get_entity(event.forward.chat)
+                ch_name = channel_entity.username or str(channel_entity.id)
+                ch_title = channel_entity.title
+            except Exception as e:
+                await event.respond(f'Error extracting channel: {str(e)}')
+                return
+        elif event.text:
+            ch_input = event.text.strip()
+            if ch_input.isdigit():
+                ch_name = ch_input
+                ch_title = ch_input
+            elif ch_input.startswith('@'):
+                ch_name = ch_input[1:]
+                ch_title = ch_input[1:]
+            else:
+                await event.respond('Invalid format. Use: ID number, @username, or forward message.')
+                return
+
+        if not ch_name:
+            await event.respond('Send one of: ID, @username, or forward a message.')
+            return
+
+        if channel_exists(ch_name):
+            buttons = [[Button.inline('Back', b'setting_sub_force')]]
+            await event.respond(f'Channel {ch_name} already added!', buttons=buttons)
+        else:
+            add_channel(ch_name, ch_title)
+            channel_action_temp[sender.id] = None
+            buttons = [[Button.inline('Back', b'setting_sub_force')]]
+            await event.respond(f'Channel {ch_name} added successfully!', buttons=buttons)
+        raise events.StopPropagation
+
+    if group_action_temp.get(sender.id) == 'add':
+        grp_id = None
+        grp_name = None
+        grp_title = None
+
+        if event.forward and event.forward.chat:
+            try:
+                group_entity = await client.get_entity(event.forward.chat)
+                grp_id = group_entity.id
+                grp_name = group_entity.username or str(group_entity.id)
+                grp_title = group_entity.title
+            except Exception as e:
+                await event.respond(f'Error extracting group: {str(e)}')
+                return
+        elif event.text:
+            grp_input = event.text.strip()
+            if grp_input.isdigit():
+                grp_id = int(grp_input)
+                grp_name = grp_input
+                grp_title = grp_input
+            elif grp_input.startswith('@'):
+                grp_name = grp_input[1:]
+                grp_id = hash(grp_name) % 1000000
+                grp_title = grp_input[1:]
+            else:
+                await event.respond('Invalid format. Use: ID number, @username, or forward message.')
+                return
+
+        if not grp_id or not grp_name:
+            await event.respond('Send one of: ID, @username, or forward a message.')
+            return
+
+        if group_exists(grp_id):
+            buttons = [[Button.inline('Back', b'owner_groups')]]
+            await event.respond(f'Group {grp_name} already added!', buttons=buttons)
+        else:
+            add_group(grp_id, grp_name, grp_title)
+            group_action_temp[sender.id] = None
+            buttons = [[Button.inline('Back', b'owner_groups')]]
+            await event.respond(f'Group {grp_name} added successfully!', buttons=buttons)
+        raise events.StopPropagation
+
+    if user_action_type.get(sender.id):
+        action = user_action_type[sender.id]
+        user_input = event.text.strip()
+        target_user = None
+
+        if user_input.isdigit():
+            target_user = get_user(int(user_input))
+        elif user_input.startswith('@'):
+            username = user_input[1:]
+            all_users = get_all_users()
+            for uid_str, user in all_users.items():
+                if user.get('username') == username:
+                    target_user = user
+                    break
+        else:
+            await event.respond('Invalid format. Use: user ID or @username', buttons=[[Button.inline('🔙 Back', b'owner_users')]])
+            raise events.StopPropagation
+
+        if not target_user:
+            await event.respond('❌ User not found!', buttons=[[Button.inline('🔙 Back', b'owner_users')]])
+            user_action_type[sender.id] = None
+            raise events.StopPropagation
+
+        if action == 'ban':
+            if target_user.get('banned'):
+                await event.respond('❌ This user is already banned!', buttons=[[Button.inline('🔙 Back', b'owner_users')]])
+            else:
+                ban_user(target_user['user_id'])
+                user_action_type[sender.id] = None
+                result_text = f"✅ User Banned!\n\nUser ID: {target_user['user_id']}\nUsername: @{target_user['username']}\nName: {target_user['first_name']}"
+                buttons = [[Button.inline('🔙 Back', b'owner_users')]]
+                await event.respond(result_text, buttons=buttons)
+                try:
+                    await client.send_message(target_user['user_id'], '🚫 You have been BANNED from this bot. You cannot use any commands or features.')
+                except Exception:
+                    pass
+
+        elif action == 'unban':
+            if not target_user.get('banned'):
+                await event.respond('❌ This user is not banned!', buttons=[[Button.inline('🔙 Back', b'owner_users')]])
+            else:
+                unban_user(target_user['user_id'])
+                user_action_type[sender.id] = None
+                result_text = f"✅ User Unbanned!\n\nUser ID: {target_user['user_id']}\nUsername: @{target_user['username']}\nName: {target_user['first_name']}"
+                buttons = [[Button.inline('🔙 Back', b'owner_users')]]
+                await event.respond(result_text, buttons=buttons)
+                try:
+                    await client.send_message(target_user['user_id'], '✅ You have been UNBANNED! You can now use the bot again.')
+                except Exception:
+                    pass
+
+        elif action == 'info':
+            user_action_type[sender.id] = None
+            info_text = f"ℹ️ USER DETAILS\n\n"
+            info_text += f"👤 ID: {target_user['user_id']}\n"
+            info_text += f"👤 Username: @{target_user['username']}\n"
+            info_text += f"📝 Name: {target_user['first_name']}\n"
+            info_text += f"💬 Messages: {target_user['messages']}\n"
+            info_text += f"📅 Joined: {target_user['joined'][:10]}\n"
+            info_text += f"⏰ Full Join Date: {target_user['joined']}\n"
+            info_text += f"🔄 Status: {'🚫 BANNED' if target_user['banned'] else '✅ ACTIVE'}\n"
+            info_text += f"📊 User Status: {target_user['status']}\n"
+            buttons = [[Button.inline('🔙 Back', b'owner_users')]]
+            await event.respond(info_text, buttons=buttons)
+
+        raise events.StopPropagation
+
+    if start_text_temp.get(sender.id):
+        text_type = start_text_temp[sender.id]
+        message = event.text
+
+        if text_type == 'owner':
+            set_setting('owner_start_text', message)
+            start_text_temp[sender.id] = None
+            preview = format_text(message, sender, get_stats())
+            buttons = [[Button.inline('Back', b'start_text_owner')]]
+            await event.respond(f"Owner start text saved!\n\nPreview:\n{preview}", buttons=buttons)
+        elif text_type == 'user':
+            set_setting('user_start_text', message)
+            start_text_temp[sender.id] = None
+            preview = format_text(message, sender, get_stats())
+            buttons = [[Button.inline('Back', b'start_text_user')]]
+            await event.respond(f"User start text saved!\n\nPreview:\n{preview}", buttons=buttons)
+        elif text_type == 'group_welcome':
+            set_setting('group_welcome_text', message)
+            start_text_temp[sender.id] = None
+            preview = format_text(message, sender, get_stats())
+            buttons = [[Button.inline('Back', b'group_welcome_text')]]
+            await event.respond(f"Group welcome text saved!\n\nPreview:\n{preview}", buttons=buttons)
+        elif text_type == 'help_desk':
+            set_setting('user_help_text', message)
+            start_text_temp[sender.id] = None
+            user_data = get_user(sender.id)
+            preview = format_text(message, sender, get_stats(), user_data)
+            buttons = [[Button.inline('🔙 Back', b'setting_help_desk')]]
+            await event.respond(f"✅ **Help text saved!**\n\n**Preview:**\n{preview}", buttons=buttons)
+        elif text_type == 'about_desk':
+            set_setting('user_about_text', message)
+            start_text_temp[sender.id] = None
+            user_data = get_user(sender.id)
+            preview = format_text(message, sender, get_stats(), user_data)
+            buttons = [[Button.inline('🔙 Back', b'setting_about_desk')]]
+            await event.respond(f"✅ **About text saved!**\n\n**Preview:**\n{preview}", buttons=buttons)
+
+        raise events.StopPropagation
+
+    if broadcast_temp.get(sender.id):
+        message = event.text
+        all_users = get_all_users()
+        stats = get_stats()
+
+        print(f"[LOG] 📢 Starting broadcast to {len(all_users)} users")
+        sent_count = 0
+        failed_count = 0
+        sent_users = []
+        failed_users = []
+
+        for user_id_str, user in all_users.items():
+            if user.get('banned'):
+                continue
+
+            try:
+                # Create a temporary user object for formatting
+                class UserObj:
+                    def __init__(self, user_data):
+                        self.first_name = user_data.get('first_name', 'User')
+                        self.username = user_data.get('username', 'user')
+                        self.id = user_data.get('user_id', 0)
+
+                user_obj = UserObj(user)
+                # Format message with placeholders for each user
+                formatted_message = format_text(message, user_obj, stats, user)
+                await client.send_message(int(user_id_str), formatted_message)
+                sent_count += 1
+                sent_users.append(f"ID: {user['user_id']} | @{user['username']} | {user['first_name']}")
+            except Exception as e:
+                failed_count += 1
+                failed_users.append(f"ID: {user['user_id']} | @{user['username']} | {user['first_name']} | Error: {str(e)}")
+                print(f"[LOG] ❌ Broadcast failed to user {user_id_str}: {e}")
+
+        # Store stats for detail view
+        broadcast_stats[sender.id] = {
+            'sent': sent_users,
+            'failed': failed_users,
+            'sent_count': sent_count,
+            'failed_count': failed_count
+        }
+
+        print(f"[LOG] ✅ Broadcast complete: {sent_count} sent, {failed_count} failed")
+        broadcast_temp[sender.id] = False
+        result_text = f"✅ Broadcast Complete!\n\n✅ Sent: {sent_count}\n❌ Failed: {failed_count}"
+        buttons = [
+            [Button.inline('📋 Detail', b'broadcast_detail'), Button.inline('🔙 Back', b'owner_back')]
+        ]
+        await event.respond(result_text, buttons=buttons)
+        raise events.StopPropagation
+
+# Track processed join events to avoid duplicates
+processed_joins = {}
+
+@client.on(events.ChatAction)
+async def member_joined_handler(event):
+    """Handle new members joining the group"""
+    try:
+        # Only process if there's an action message (user joined/added)
+        if not event.action_message:
+            return
+
+        if event.user_joined or event.user_added:
+            chat = await event.get_chat()
+            if not chat:
+                print(f"[LOG] ⚠️ Could not get chat info in member_joined_handler")
+                return
+
+            grp_id = chat.id
+            grp_name = chat.username or str(chat.id)
+            grp_title = chat.title or 'Unknown Group'
+
+            # Check if group is in database (if removed, don't send welcome)
+            if not group_exists(grp_id):
+                print(f"[LOG] ⏭️ Group {grp_title} not in database, skipping welcome message")
+                return
+
+            # Get the user who joined
+            user = await event.get_user()
+            if not user:
+                print(f"[LOG] ⚠️ Could not get user info for join event in {grp_title}")
+                return
+
+            # Create unique key based on message ID to prevent duplicate processing
+            if hasattr(event.action_message, 'id'):
+                join_key = f"{grp_id}_{user.id}_{event.action_message.id}"
+            else:
+                join_key = f"{grp_id}_{user.id}_{int(datetime.now().timestamp())}"
+
+            # Check if we already processed this exact join event
+            if join_key in processed_joins:
+                print(f"[LOG] ⏭️ Skipping duplicate join event for {user.first_name} in {grp_title}")
+                return
+
+            # Mark as processed
+            processed_joins[join_key] = datetime.now().timestamp()
+
+            print(f"[LOG] 👤 New member joined: {user.first_name} (@{user.username or 'no_username'}) ID: {user.id}")
+            print(f"[LOG] 📍 Group: {grp_title} (ID: {grp_id})")
+
+            # Add group to database if not exists
+            if not group_exists(grp_id):
+                add_group(grp_id, grp_name, grp_title)
+                print(f"[LOG] ✅ Group '{grp_title}' added to database")
+
+            # Add user to database
+            add_user(user.id, user.username or 'unknown', user.first_name or 'User')
+            print(f"[LOG] ✅ User '{user.first_name}' added/updated in database")
+
+            # Get random welcome message (includes both default and custom messages)
+            user_username = user.username or user.first_name or "user"
+            msg_text = get_random_welcome_message(user_username, grp_title)
+            print(f"[LOG] 🎲 Random welcome message selected: {msg_text[:50]}...")
+
+            try:
+                # Send welcome message
+                welcome_message = await client.send_message(chat, msg_text)
+                print(f"[LOG] ✅ Welcome message sent to {user.first_name} in {grp_title}")
+
+                # Schedule deletion after 15 seconds
+                async def delete_after_delay():
+                    await asyncio.sleep(15)
+                    try:
+                        await welcome_message.delete()
+                        print(f"[LOG] 🗑️ Welcome message auto-deleted for {user.first_name} in {grp_title}")
+                    except Exception as del_err:
+                        print(f"[LOG] ❌ Could not delete welcome message: {del_err}")
+
+                # Run deletion in background
+                asyncio.create_task(delete_after_delay())
+            except Exception as send_err:
+                print(f"[LOG] ❌ Error sending welcome message: {send_err}")
+
+    except Exception as e:
+        print(f"[LOG] ❌ Error in member_joined_handler: {e}")
+
+@client.on(events.NewMessage(incoming=True))
+async def group_message_handler(event):
+    try:
+        if event.is_group:
+            chat = await event.get_chat()
+            grp_id = chat.id
+
+            # Ignore messages from removed groups
+            if not is_group_active(grp_id):
+                return
+
+            sender = await event.get_sender()
+
+            if not sender or not chat:
+                return
+            grp_name = chat.username or str(chat.id)
+            grp_title = chat.title or 'Unknown'
+
+            # Only track messages if group is in database
+            if group_exists(grp_id):
+                # Track messages
+                add_user(sender.id, sender.username or 'unknown', sender.first_name or 'User')
+                increment_messages(sender.id)
+            else:
+                print(f"[LOG] ⏭️ Group '{grp_title}' not in database, skipping message tracking")
+    except Exception as e:
+        print(f"[LOG] ❌ Error in group_message_handler: {e}")
+
+async def check_admin_permission(event, sender_id=None):
+    """Check if user has admin permission (bot owner, group owner, or group admin or anonymous admin)"""
+    from telethon.tl.types import PeerChannel, PeerUser
+
+    # Bot owner has permission everywhere
+    if sender_id and sender_id == owner_id:
+        return True
+
+    # In private chat, only bot owner allowed
+    if event.is_private:
+        return sender_id == owner_id
+
+    # In group, check if user is group owner or admin or anonymous admin
+    if event.is_group:
+        try:
+            chat = await event.get_chat()
+
+            # First check: is this an anonymous admin?
+            # Anonymous posts have from_id as PeerChannel (the channel used for anonymous posting)
+            if hasattr(event, 'from_id') and isinstance(event.from_id, PeerChannel):
+                # This is an anonymous admin, return True
+                print(f"Anonymous admin detected in group {chat.title}")
+                return True
+
+            # Second check: is this from the message's from_id as PeerChannel?
+            if event.message and hasattr(event.message, 'from_id'):
+                if isinstance(event.message.from_id, PeerChannel):
+                    print(f"Anonymous admin detected via message.from_id in group {chat.title}")
+                    return True
+
+            # Third check: regular user with sender_id
+            if sender_id:
+                try:
+                    participant = await client.get_permissions(chat, sender_id)
+                    if participant.is_creator or participant.is_admin:
+                        print(f"User {sender_id} is admin/creator in {chat.title}")
+                        return True
+                except Exception as perm_err:
+                    print(f"Permission check failed for {sender_id}: {perm_err}")
+                    pass
+
+        except Exception as e:
+            print(f"Error in check_admin_permission: {e}")
+            pass
+
+    return False
+
+@client.on(events.NewMessage(pattern=r'/ban(?:\s+(.+))?'))
+async def ban_handler(event):
+    # Ignore commands from removed groups
+    if event.is_group:
+        chat = await event.get_chat()
+        if not is_group_active(chat.id):
+            raise events.StopPropagation
+
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else None
+
+    # Check admin permission (allows anonymous admins too)
+    has_permission = await check_admin_permission(event, sender_id)
+    if not has_permission:
+        await event.respond('🔐 Permission Denied! Only bot owner or group admins can use this!')
+        raise events.StopPropagation
+
+    # Get target user
+    target_user_id = None
+    target_user = None
+    match = event.pattern_match
+
+    if event.reply_to_msg_id:
+        reply_msg = await event.get_reply_message()
+        if reply_msg and reply_msg.from_id:
+            target_user_id = reply_msg.from_id.user_id
+            target_user = get_user(target_user_id)
+    elif match.group(1):
+        user_input = match.group(1).strip()
+        if user_input.isdigit():
+            target_user_id = int(user_input)
+            target_user = get_user(target_user_id)
+        elif user_input.startswith('@'):
+            username = user_input[1:]
+            all_users = get_all_users()
+            for uid_str, user in all_users.items():
+                if user.get('username') == username:
+                    target_user = user
+                    target_user_id = user['user_id']
+                    break
+        else:
+            await event.respond('❌ Invalid format. Use: `/ban <user_id>` or `/ban @username` or reply with `/ban`')
+            raise events.StopPropagation
+    else:
+        await event.respond('❌ No user specified. Use: `/ban <user_id>` or `/ban @username` or reply with `/ban`')
+        raise events.StopPropagation
+
+    # In group, verify target user is in the same group
+    if event.is_group:
+        try:
+            chat = await event.get_chat()
+            target_in_group = await client.get_permissions(chat, target_user_id)
+            if not target_in_group:
+                await event.respond('❌ User not found in this group!')
+                raise events.StopPropagation
+        except Exception as e:
+            await event.respond('❌ User not found in this group!')
+            raise events.StopPropagation
+
+    if not target_user:
+        await event.respond('❌ User not found in bot database!')
+        raise events.StopPropagation
+
+    if target_user.get('banned'):
+        await event.respond('❌ This user is already banned!')
+    else:
+        # Ban user in bot database
+        ban_user(target_user['user_id'])
+
+        # If in group, also kick from group
+        if event.is_group:
+            try:
+                chat = await event.get_chat()
+                await client.edit_permissions(chat, target_user_id, view_messages=False)
+                group_name = f" in {chat.title}"
+            except Exception as kick_err:
+                print(f"Could not kick user from group: {kick_err}")
+                group_name = " in bot"
+        else:
+            group_name = " in bot"
+
+        result_text = f"✅ User Banned{group_name}!\n\nUser ID: {target_user['user_id']}\nUsername: @{target_user['username']}\nName: {target_user['first_name']}"
+        await event.respond(result_text)
+        try:
+            await client.send_message(target_user['user_id'], f'🚫 You have been BANNED{group_name}.')
+        except Exception:
+            pass
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/unban(?:\s+(.+))?'))
+async def unban_handler(event):
+    # Ignore commands from removed groups
+    if event.is_group:
+        chat = await event.get_chat()
+        if not is_group_active(chat.id):
+            raise events.StopPropagation
+
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else None
+
+    # Check admin permission (allows anonymous admins too)
+    has_permission = await check_admin_permission(event, sender_id)
+    if not has_permission:
+        await event.respond('🔐 Permission Denied! Only bot owner or group admins can use this!')
+        raise events.StopPropagation
+
+    # Get target user
+    target_user_id = None
+    target_user = None
+    match = event.pattern_match
+
+    if event.reply_to_msg_id:
+        reply_msg = await event.get_reply_message()
+        if reply_msg and reply_msg.from_id:
+            target_user_id = reply_msg.from_id.user_id
+            target_user = get_user(target_user_id)
+    elif match.group(1):
+        user_input = match.group(1).strip()
+        if user_input.isdigit():
+            target_user_id = int(user_input)
+            target_user = get_user(target_user_id)
+        elif user_input.startswith('@'):
+            username = user_input[1:]
+            all_users = get_all_users()
+            for uid_str, user in all_users.items():
+                if user.get('username') == username:
+                    target_user = user
+                    target_user_id = user['user_id']
+                    break
+        else:
+            await event.respond('❌ Invalid format. Use: `/unban <user_id>` or `/unban @username` or reply with `/unban`')
+            raise events.StopPropagation
+    else:
+        await event.respond('❌ No user specified. Use: `/unban <user_id>` or `/unban @username` or reply with `/unban`')
+        raise events.StopPropagation
+
+    # In group, verify target user is in the same group
+    if event.is_group:
+        try:
+            chat = await event.get_chat()
+            target_in_group = await client.get_permissions(chat, target_user_id)
+            if not target_in_group:
+                await event.respond('❌ User not found in this group!')
+                raise events.StopPropagation
+        except Exception as e:
+            await event.respond('❌ User not found in this group!')
+            raise events.StopPropagation
+
+    if not target_user:
+        await event.respond('❌ User not found in bot database!')
+        raise events.StopPropagation
+
+    if not target_user.get('banned'):
+        await event.respond('❌ This user is not banned!')
+    else:
+        # Unban user in bot database
+        unban_user(target_user['user_id'])
+
+        # If in group, also restore permissions
+        if event.is_group:
+            try:
+                from telethon.tl.types import ChatBannedRights
+                chat = await event.get_chat()
+                # Restore full permissions (no restrictions)
+                await client.edit_permissions(chat, target_user_id, ChatBannedRights(until_date=None))
+                group_name = f" in {chat.title}"
+            except Exception as restore_err:
+                print(f"Could not restore user in group: {restore_err}")
+                group_name = " in bot"
+        else:
+            group_name = " in bot"
+
+        result_text = f"✅ User Unbanned{group_name}!\n\nUser ID: {target_user['user_id']}\nUsername: @{target_user['username']}\nName: {target_user['first_name']}"
+        await event.respond(result_text)
+        try:
+            await client.send_message(target_user['user_id'], f'✅ You have been UNBANNED{group_name}!')
+        except Exception:
+            pass
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/info(?:\s+(.+))?'))
+async def info_handler(event):
+    # Ignore commands from removed groups
+    if event.is_group:
+        chat = await event.get_chat()
+        if not is_group_active(chat.id):
+            raise events.StopPropagation
+
+    sender = await event.get_sender()
+    sender_id = sender.id if sender else None
+
+    # Check admin permission (allows anonymous admins too)
+    has_permission = await check_admin_permission(event, sender_id)
+    if not has_permission:
+        await event.respond('🔐 Permission Denied! Only bot owner or group admins can use this!')
+        raise events.StopPropagation
+
+    # Get target user
+    target_user_id = None
+    target_user = None
+    match = event.pattern_match
+
+    if event.reply_to_msg_id:
+        reply_msg = await event.get_reply_message()
+        if reply_msg and reply_msg.from_id:
+            target_user_id = reply_msg.from_id.user_id
+            target_user = get_user(target_user_id)
+    elif match.group(1):
+        user_input = match.group(1).strip()
+        if user_input.isdigit():
+            target_user_id = int(user_input)
+            target_user = get_user(target_user_id)
+        elif user_input.startswith('@'):
+            username = user_input[1:]
+            all_users = get_all_users()
+            for uid_str, user in all_users.items():
+                if user.get('username') == username:
+                    target_user = user
+                    target_user_id = user['user_id']
+                    break
+        else:
+            await event.respond('❌ Invalid format. Use: `/info <user_id>` or `/info @username` or reply with `/info`')
+            raise events.StopPropagation
+    else:
+        await event.respond('❌ No user specified. Use: `/info <user_id>` or `/info @username` or reply with `/info`')
+        raise events.StopPropagation
+
+    # In group, verify target user is in the same group
+    if event.is_group:
+        try:
+            chat = await event.get_chat()
+            target_in_group = await client.get_permissions(chat, target_user_id)
+            if not target_in_group:
+                await event.respond('❌ User not found in this group!')
+                raise events.StopPropagation
+        except Exception as e:
+            await event.respond('❌ User not found in this group!')
+            raise events.StopPropagation
+
+    if not target_user:
+        await event.respond('❌ User not found in bot database!')
+        raise events.StopPropagation
+
+    info_text = f"ℹ️ USER DETAILS\n\n"
+    info_text += f"👤 ID: {target_user['user_id']}\n"
+    info_text += f"👤 Username: @{target_user['username']}\n"
+    info_text += f"📝 Name: {target_user['first_name']}\n"
+    info_text += f"💬 Messages: {target_user['messages']}\n"
+    info_text += f"📅 Joined: {target_user['joined'][:10]}\n"
+    info_text += f"⏰ Full Join Date: {target_user['joined']}\n"
+    info_text += f"🔄 Status: {'🚫 BANNED' if target_user['banned'] else '✅ ACTIVE'}\n"
+    info_text += f"📊 User Status: {target_user['status']}\n"
+
+    if event.is_group:
+        chat = await event.get_chat()
+        info_text += f"\n📍 Group: {chat.title}"
+
+    await event.respond(info_text)
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/num(?:\s+(.+))?'))
+async def num_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    # Check access
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    # Check if tool is active
+    if not get_tool_status('number_info'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('📱 Usage: /num <mobile_number>\n\nExample: /num 7999520665')
+        raise events.StopPropagation
+
+    number = match.group(1).strip()
+    validated = validate_phone_number(number)
+
+    if not validated:
+        await event.respond('❌ Invalid phone number!\n\nFormat: 10 digit number\nExample: 7999520665')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('number_info', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/adhar(?:\s+(.+))?'))
+async def adhar_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('aadhar_info'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('🆔 Usage: /adhar <aadhar_number>\n\nExample: /adhar 123456789012')
+        raise events.StopPropagation
+
+    aadhar = match.group(1).strip()
+    validated = validate_aadhar(aadhar)
+
+    if not validated:
+        await event.respond('❌ Invalid Aadhar number!\n\nFormat: 12 digit number')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('aadhar_info', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/family(?:\s+(.+))?'))
+async def family_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('aadhar_family'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('👨‍👩‍👧‍👦 Usage: /family <aadhar_number>\n\nExample: /family 123456789012')
+        raise events.StopPropagation
+
+    aadhar = match.group(1).strip()
+    validated = validate_aadhar(aadhar)
+
+    if not validated:
+        await event.respond('❌ Invalid Aadhar number!\n\nFormat: 12 digit number')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('aadhar_family', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/vhe(?:\s+(.+))?'))
+async def vhe_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('vehicle_info'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('🚗 Usage: /vhe <vehicle_number>\n\nExample: /vhe MH12AB1234')
+        raise events.StopPropagation
+
+    vehicle = match.group(1).strip()
+    validated = validate_vehicle(vehicle)
+
+    if not validated:
+        await event.respond('❌ Invalid vehicle number!\n\nFormat: Indian Vehicle Number\nExample: MH12AB1234')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('vehicle_info', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/ifsc(?:\s+(.+))?'))
+async def ifsc_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('ifsc_info'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('🏦 Usage: /ifsc <ifsc_code>\n\nExample: /ifsc SBIN0001234')
+        raise events.StopPropagation
+
+    ifsc = match.group(1).strip()
+    validated = validate_ifsc(ifsc)
+
+    if not validated:
+        await event.respond('❌ Invalid IFSC code!\n\nFormat: 11 character code\nExample: SBIN0001234')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('ifsc_info', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/pak(?:\s+(.+))?'))
+async def pak_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('pak_num'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('🇵🇰 Usage: /pak <pakistan_number>\n\nExample: /pak 03001234567')
+        raise events.StopPropagation
+
+    pak_num = match.group(1).strip()
+    validated = validate_pak_number(pak_num)
+
+    if not validated:
+        await event.respond('❌ Invalid Pakistan number!\n\nFormat: 10-11 digit number\nExample: 03001234567')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('pak_num', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/pin(?:\s+(.+))?'))
+async def pin_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('pincode_info'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('📍 Usage: /pin <pincode>\n\nExample: /pin 400001')
+        raise events.StopPropagation
+
+    pincode = match.group(1).strip()
+    validated = validate_pincode(pincode)
+
+    if not validated:
+        await event.respond('❌ Invalid PIN code!\n\nFormat: 6 digit code\nExample: 400001')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('pincode_info', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/imei(?:\s+(.+))?'))
+async def imei_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('imei_info'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('📱 Usage: /imei <imei_number>\n\nExample: /imei 123456789012345')
+        raise events.StopPropagation
+
+    imei = match.group(1).strip()
+    validated = validate_imei(imei)
+
+    if not validated:
+        await event.respond('❌ Invalid IMEI number!\n\nFormat: 15 digit number\nExample: 123456789012345')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('imei_info', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern=r'/ip(?:\s+(.+))?'))
+async def ip_handler(event):
+    sender = await event.get_sender()
+    if not sender:
+        return
+
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first:\n\n'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    msg += f"📺 {ch['title']}: {ch_username}\n"
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    if not get_tool_status('ip_info'):
+        await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    match = event.pattern_match
+    if not match.group(1):
+        await event.respond('🌐 Usage: /ip <ip_address>\n\nExample: /ip 8.8.8.8')
+        raise events.StopPropagation
+
+    ip = match.group(1).strip()
+    validated = validate_ip(ip)
+
+    if not validated:
+        await event.respond('❌ Invalid IP address!\n\nFormat: IPv4 or IPv6\nExample: 8.8.8.8')
+        raise events.StopPropagation
+
+    processing_msg = await event.respond('⏳ Processing...')
+    data, error = await call_tool_api('ip_info', validated)
+
+    if data:
+        response = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        if len(response) > 4000:
+            response = response[:3997] + "..."
+        await processing_msg.edit(response)
+    else:
+        await processing_msg.edit(f"❌ Error: {error}")
+
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern='/help'))
+async def help_handler(event):
+    # Check if in removed group
+    if event.is_group:
+        chat = await event.get_chat()
+        if not is_group_active(chat.id):
+            raise events.StopPropagation
+
+    sender = await event.get_sender()
+
+    # Check access
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first to use this bot!'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    # Owner gets full command list
+    if sender.id == owner_id:
+        help_text = "**👑 OWNER COMMANDS**\n\n"
+        help_text += "**👥 User Management:**\n"
+        help_text += "├ `/ban <user_id/@username>` - Ban user\n"
+        help_text += "├ `/unban <user_id/@username>` - Unban user\n"
+        help_text += "└ `/info <user_id/@username>` - Get user info\n\n"
+        
+        help_text += "**🛠️ Tool Commands:**\n"
+        help_text += "├ `/num <number>` - Phone number info\n"
+        help_text += "├ `/adhar <number>` - Aadhar info\n"
+        help_text += "├ `/family <aadhar>` - Aadhar family lookup\n"
+        help_text += "├ `/vhe <vehicle>` - Vehicle info\n"
+        help_text += "├ `/ifsc <code>` - IFSC code info\n"
+        help_text += "├ `/pak <number>` - Pakistan number info\n"
+        help_text += "├ `/pin <pincode>` - PIN code info\n"
+        help_text += "├ `/imei <number>` - IMEI info\n"
+        help_text += "└ `/ip <address>` - IP address info\n\n"
+        
+        help_text += "**🤖 General Commands:**\n"
+        help_text += "├ `/start` - Start the bot\n"
+        help_text += "├ `/help` - Show this help\n"
+        help_text += "├ `/hello` - Get greeting\n"
+        help_text += "└ `/time` - Get current time\n\n"
+        
+        help_text += "**💡 Tips:**\n"
+        help_text += "• Use bot menu for broadcast & settings\n"
+        help_text += "• Reply to message + command for quick actions\n"
+        help_text += "• All tools support direct commands"
+        
+        await event.respond(help_text)
+    else:
+        # Regular user gets help section from settings
+        current_help = get_setting('user_help_text', '❓ **HELP DESK**\n\n🤖 **Bot Commands:**\n/start - Start the bot\n/hello - Get a greeting\n/time - Get current time\n\n🛠️ **Available Tools:**\n/num - Phone number lookup\n/adhar - Aadhar info\n/family - Aadhar family lookup\n/vhe - Vehicle information\n/ifsc - IFSC code details\n/pak - Pakistan number info\n/pin - PIN code lookup\n/imei - IMEI information\n/ip - IP address details\n\n📌 **Usage:**\nSelect a tool from the menu or use commands directly.\n\n💡 **Tip:**\nAll tools provide instant results in JSON format.')
+        user_data = get_user(sender.id)
+        formatted_help = format_text(current_help, sender, get_stats(), user_data)
+        await event.respond(formatted_help)
+    
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern='/hello'))
+async def hello_handler(event):
+    # Check if in removed group
+    if event.is_group:
+        chat = await event.get_chat()
+        if not is_group_active(chat.id):
+            raise events.StopPropagation
+
+    sender = await event.get_sender()
+
+    # Check access
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first to use this bot!'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    await event.respond(f'Hello {sender.first_name}!')
+    raise events.StopPropagation
+
+@client.on(events.NewMessage(pattern='/time'))
+async def time_handler(event):
+    # Check if in removed group
+    if event.is_group:
+        chat = await event.get_chat()
+        if not is_group_active(chat.id):
+            raise events.StopPropagation
+
+    sender = await event.get_sender()
+
+    # Check access
+    if sender.id != owner_id:
+        access_check = await check_user_access(sender.id)
+        if not access_check['allowed']:
+            if access_check['reason'] == 'banned':
+                await event.respond('🚫 You are BANNED from using this bot!')
+            elif access_check['reason'] == 'not_subscribed':
+                msg = '⚠️ Please join these channels first to use this bot!'
+                buttons = []
+                for ch in access_check['channels']:
+                    ch_username = ch['username']
+                    if not ch_username.startswith('@'):
+                        ch_username = '@' + ch_username
+                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
+                await event.respond(msg, buttons=buttons)
+            raise events.StopPropagation
+
+    current_time = datetime.now().strftime("%H:%M:%S")
+    await event.respond(f'Current time: {current_time}')
+    raise events.StopPropagation
+
+@app.route('/')
+def index():
+    stats = get_stats()
+    status = "Online" if bot_status["running"] else "Offline"
+    
+    active_tools = get_all_active_tools()
+    groups = get_all_groups()
+    channels = get_all_channels()
+    
+    uptime = "N/A"
+    if bot_status["start_time"]:
+        delta = datetime.now() - bot_status["start_time"]
+        hours, remainder = divmod(int(delta.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        uptime = f"{hours}h {minutes}m {seconds}s"
+    
+    return render_template('index.html',
+        status=status,
+        total_users=stats['total_users'],
+        active_users=stats['active_users'],
+        banned_users=stats['banned_users'],
+        total_messages=stats['total_messages'],
+        active_tools=len(active_tools),
+        total_tools=len(TOOL_CONFIG),
+        total_groups=len(groups),
+        total_channels=len(channels),
+        uptime=uptime,
+        owner_id=owner_id,
+        last_updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+@app.route('/api/status')
+def api_status():
+    stats = get_stats()
+    return {
+        "status": "online" if bot_status["running"] else "offline",
+        "total_users": stats['total_users'],
+        "active_users": stats['active_users'],
+        "banned_users": stats['banned_users'],
+        "total_messages": stats['total_messages'],
+        "uptime": str(datetime.now() - bot_status["start_time"]) if bot_status["start_time"] else "N/A"
+    }
+
+def run_flask():
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
+def run_bot():
+    bot_status["running"] = True
+    bot_status["start_time"] = datetime.now()
+    print("Bot started!")
+    client.run_until_disconnected()
+
+if __name__ == '__main__':
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print("Flask server started on port 5000")
+    run_bot()
