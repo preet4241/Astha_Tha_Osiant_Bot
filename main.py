@@ -2795,6 +2795,14 @@ async def num_handler(event):
         await event.respond('❌ This tool is currently disabled!')
         raise events.StopPropagation
 
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"📱 **Number Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
+        raise events.StopPropagation
+
     match = event.pattern_match
     if not match.group(1):
         await event.respond('📱 Usage: /num <mobile_number>\n\nExample: /num 7999520665')
@@ -2845,6 +2853,14 @@ async def adhar_handler(event):
 
     if not get_tool_status('aadhar_info'):
         await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"🆔 **Aadhar Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -2899,6 +2915,14 @@ async def family_handler(event):
         await event.respond('❌ This tool is currently disabled!')
         raise events.StopPropagation
 
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"👨‍👩‍👧‍👦 **Aadhar to Family Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
+        raise events.StopPropagation
+
     match = event.pattern_match
     if not match.group(1):
         await event.respond('👨‍👩‍👧‍👦 Usage: /family <aadhar_number>\n\nExample: /family 123456789012')
@@ -2949,6 +2973,14 @@ async def vhe_handler(event):
 
     if not get_tool_status('vehicle_info'):
         await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"🚗 **Vehicle Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -3003,6 +3035,14 @@ async def ifsc_handler(event):
         await event.respond('❌ This tool is currently disabled!')
         raise events.StopPropagation
 
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"🏦 **IFSC Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
+        raise events.StopPropagation
+
     match = event.pattern_match
     if not match.group(1):
         await event.respond('🏦 Usage: /ifsc <ifsc_code>\n\nExample: /ifsc SBIN0001234')
@@ -3053,6 +3093,14 @@ async def pak_handler(event):
 
     if not get_tool_status('pak_num'):
         await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"🇵🇰 **Pakistan Number Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -3107,6 +3155,14 @@ async def pin_handler(event):
         await event.respond('❌ This tool is currently disabled!')
         raise events.StopPropagation
 
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"📍 **Pin Code Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
+        raise events.StopPropagation
+
     match = event.pattern_match
     if not match.group(1):
         await event.respond('📍 Usage: /pin <pincode>\n\nExample: /pin 400001')
@@ -3159,6 +3215,14 @@ async def imei_handler(event):
         await event.respond('❌ This tool is currently disabled!')
         raise events.StopPropagation
 
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"📱 **IMEI Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
+        raise events.StopPropagation
+
     match = event.pattern_match
     if not match.group(1):
         await event.respond('📱 Usage: /imei <imei_number>\n\nExample: /imei 123456789012345')
@@ -3209,6 +3273,14 @@ async def ip_handler(event):
 
     if not get_tool_status('ip_info'):
         await event.respond('❌ This tool is currently disabled!')
+        raise events.StopPropagation
+
+    # Show connected groups for this tool
+    groups = get_all_groups()
+    if groups:
+        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
+        msg = f"🌐 **IP Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
+        await event.respond(msg)
         raise events.StopPropagation
 
     match = event.pattern_match
