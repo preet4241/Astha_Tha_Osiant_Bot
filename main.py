@@ -1668,10 +1668,12 @@ async def callback_handler(event):
             await event.edit(msg, buttons=buttons)
             return
         
-        msg = '🛠️ CONNECTED GROUPS\n\nYou can use tools in these groups:\n\n'
-        for i, grp in enumerate(groups, 1):
-            msg += f"{i}. {grp['title']}\n"
-        buttons = [[Button.inline('🔙 Back', b'user_back')]]
+        msg = '🛠️ **Connected Groups**\n\nYou can use tools in these groups. Click to join:'
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        buttons.append([Button.inline('🔙 Back', b'user_back')])
         await event.edit(msg, buttons=buttons)
 
     elif data == b'user_profile':
@@ -2798,9 +2800,12 @@ async def num_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"📱 **Number Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"📱 **Number Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -2858,9 +2863,12 @@ async def adhar_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"🆔 **Aadhar Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"🆔 **Aadhar Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -2918,9 +2926,12 @@ async def family_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"👨‍👩‍👧‍👦 **Aadhar to Family Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"👨‍👩‍👧‍👦 **Aadhar to Family Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -2978,9 +2989,12 @@ async def vhe_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"🚗 **Vehicle Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"🚗 **Vehicle Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -3038,9 +3052,12 @@ async def ifsc_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"🏦 **IFSC Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"🏦 **IFSC Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -3098,9 +3115,12 @@ async def pak_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"🇵🇰 **Pakistan Number Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"🇵🇰 **Pakistan Number Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -3158,9 +3178,12 @@ async def pin_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"📍 **Pin Code Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"📍 **Pin Code Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -3218,9 +3241,12 @@ async def imei_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"📱 **IMEI Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"📱 **IMEI Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
@@ -3278,9 +3304,12 @@ async def ip_handler(event):
     # Show connected groups for this tool
     groups = get_all_groups()
     if groups:
-        grp_list = '\n'.join([f"• {g['title']}" for g in groups])
-        msg = f"🌐 **IP Info Tool**\n\n🛠️ **Connected Groups:**\n{grp_list}\n\nYou can use this tool in these groups!"
-        await event.respond(msg)
+        msg = f"🌐 **IP Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
+        buttons = []
+        for grp in groups:
+            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            buttons.append([Button.url(grp['title'], grp_url)])
+        await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
 
     match = event.pattern_match
