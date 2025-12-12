@@ -37,10 +37,11 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS groups (
             group_id INTEGER PRIMARY KEY,
-            group_username TEXT UNIQUE,
+            group_username TEXT,
             group_title TEXT,
             added_date TEXT,
-            is_active INTEGER DEFAULT 1
+            is_active INTEGER DEFAULT 1,
+            invite_link TEXT
         )
     ''')
 
@@ -412,30 +413,44 @@ def check_channel_limits():
     conn.commit()
     conn.close()
 
-def add_group(group_id, group_username, group_title):
+def add_group(group_id, group_username, group_title, invite_link=None):
     """Add group or reactivate if already exists"""
     init_db()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     try:
+        # Try to add invite_link column if it doesn't exist
+        try:
+            cursor.execute('ALTER TABLE groups ADD COLUMN invite_link TEXT')
+            conn.commit()
+        except:
+            pass
+
         # Check if group exists (even if inactive)
         cursor.execute('SELECT is_active FROM groups WHERE group_id = ?', (group_id,))
         existing = cursor.fetchone()
 
         if existing:
             # Group exists, reactivate it
-            cursor.execute('''
-                UPDATE groups 
-                SET is_active = 1, group_username = ?, group_title = ?, added_date = ?
-                WHERE group_id = ?
-            ''', (group_username, group_title, datetime.now().isoformat(), group_id))
+            if invite_link:
+                cursor.execute('''
+                    UPDATE groups 
+                    SET is_active = 1, group_username = ?, group_title = ?, added_date = ?, invite_link = ?
+                    WHERE group_id = ?
+                ''', (group_username, group_title, datetime.now().isoformat(), invite_link, group_id))
+            else:
+                cursor.execute('''
+                    UPDATE groups 
+                    SET is_active = 1, group_username = ?, group_title = ?, added_date = ?
+                    WHERE group_id = ?
+                ''', (group_username, group_title, datetime.now().isoformat(), group_id))
         else:
             # New group, insert it
             cursor.execute('''
-                INSERT INTO groups (group_id, group_username, group_title, added_date, is_active)
-                VALUES (?, ?, ?, ?, 1)
-            ''', (group_id, group_username, group_title, datetime.now().isoformat()))
+                INSERT INTO groups (group_id, group_username, group_title, added_date, is_active, invite_link)
+                VALUES (?, ?, ?, ?, 1, ?)
+            ''', (group_id, group_username, group_title, datetime.now().isoformat(), invite_link))
 
         conn.commit()
         result = True
@@ -497,13 +512,17 @@ def get_all_groups():
     cursor = conn.cursor()
 
     try:
-        cursor.execute('SELECT group_id, group_username, group_title, added_date FROM groups WHERE is_active = 1 ORDER BY added_date DESC')
+        cursor.execute('SELECT group_id, group_username, group_title, added_date, invite_link FROM groups WHERE is_active = 1 ORDER BY added_date DESC')
         groups = cursor.fetchall()
     except Exception as e:
-        # If is_active column doesn't exist, get all groups
-        print(f"Error fetching active groups: {e}")
-        cursor.execute('SELECT group_id, group_username, group_title, added_date FROM groups ORDER BY added_date DESC')
-        groups = cursor.fetchall()
+        # If invite_link column doesn't exist, get without it
+        print(f"Error fetching active groups with invite_link: {e}")
+        try:
+            cursor.execute('SELECT group_id, group_username, group_title, added_date FROM groups WHERE is_active = 1 ORDER BY added_date DESC')
+            groups = [(g[0], g[1], g[2], g[3], None) for g in cursor.fetchall()]
+        except:
+            cursor.execute('SELECT group_id, group_username, group_title, added_date FROM groups ORDER BY added_date DESC')
+            groups = [(g[0], g[1], g[2], g[3], None) for g in cursor.fetchall()]
 
     conn.close()
 
@@ -513,7 +532,8 @@ def get_all_groups():
             'group_id': grp[0],
             'username': grp[1],
             'title': grp[2],
-            'added_date': grp[3]
+            'added_date': grp[3],
+            'invite_link': grp[4] if len(grp) > 4 else None
         })
 
     return result

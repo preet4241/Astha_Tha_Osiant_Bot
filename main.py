@@ -1671,7 +1671,14 @@ async def callback_handler(event):
         msg = '🛠️ **Connected Groups**\n\nYou can use tools in these groups. Click to join:'
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         buttons.append([Button.inline('🔙 Back', b'user_back')])
         await event.edit(msg, buttons=buttons)
@@ -2315,16 +2322,27 @@ async def member_joined_handler(event):
                 grp_id = chat.id
                 grp_name = chat.username or str(chat.id)
                 grp_title = chat.title or 'Unknown Group'
+                invite_link = None
+                
+                # Try to get invite link for private groups
+                if not chat.username:
+                    try:
+                        from telethon.tl.functions.messages import ExportChatInviteRequest
+                        invite = await client(ExportChatInviteRequest(chat))
+                        invite_link = invite.link
+                        print(f"[LOG] 📎 Got invite link for private group '{grp_title}': {invite_link}")
+                    except Exception as invite_err:
+                        print(f"[LOG] ⚠️ Could not get invite link for '{grp_title}': {invite_err}")
                 
                 # Auto-add group when bot is directly added
                 was_new = False
                 if not group_exists(grp_id):
-                    add_group(grp_id, grp_name, grp_title)
+                    add_group(grp_id, grp_name, grp_title, invite_link)
                     print(f"[LOG] 🤖 Bot added to new group '{grp_title}' - Auto-added to database")
                     was_new = True
                 else:
                     # Group exists but might be inactive - reactivate it
-                    add_group(grp_id, grp_name, grp_title)
+                    add_group(grp_id, grp_name, grp_title, invite_link)
                     print(f"[LOG] 🤖 Bot re-added to group '{grp_title}' - Reactivated in database")
                 
                 # Send thank you message and auto-delete after 10 seconds
@@ -2803,7 +2821,14 @@ async def num_handler(event):
         msg = f"📱 **Number Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -2866,7 +2891,14 @@ async def adhar_handler(event):
         msg = f"🆔 **Aadhar Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -2929,7 +2961,14 @@ async def family_handler(event):
         msg = f"👨‍👩‍👧‍👦 **Aadhar to Family Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -2992,7 +3031,14 @@ async def vhe_handler(event):
         msg = f"🚗 **Vehicle Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -3055,7 +3101,14 @@ async def ifsc_handler(event):
         msg = f"🏦 **IFSC Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -3118,7 +3171,14 @@ async def pak_handler(event):
         msg = f"🇵🇰 **Pakistan Number Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -3181,7 +3241,14 @@ async def pin_handler(event):
         msg = f"📍 **Pin Code Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -3244,7 +3311,14 @@ async def imei_handler(event):
         msg = f"📱 **IMEI Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
@@ -3307,7 +3381,14 @@ async def ip_handler(event):
         msg = f"🌐 **IP Info Tool**\n\n🛠️ **Connected Groups:**\n\nSelect a group to use this tool:"
         buttons = []
         for grp in groups:
-            grp_url = f"https://t.me/{grp['username']}" if grp['username'] and not grp['username'].startswith('-') else f"https://t.me/c/{abs(grp['group_id'])}"
+            if grp.get('invite_link'):
+                grp_url = grp['invite_link']
+            elif grp['username'] and not str(grp['username']).startswith('-') and not str(grp['username']).isdigit():
+                grp_url = f"https://t.me/{grp['username']}"
+            else:
+                gid = str(grp['group_id'])
+                channel_id = gid[4:] if gid.startswith('-100') else gid.lstrip('-')
+                grp_url = f"https://t.me/c/{channel_id}"
             buttons.append([Button.url(grp['title'], grp_url)])
         await event.respond(msg, buttons=buttons)
         raise events.StopPropagation
