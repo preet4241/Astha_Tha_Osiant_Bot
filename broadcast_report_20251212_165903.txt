@@ -1,0 +1,32 @@
+📋 BROADCAST REPORT
+==================================================
+
+✅ SUCCESSFULLY SENT: 2
+--------------------------------------------------
+ID: 6811587584 | @Cyber_as | ᴀsᴛʜᴀ ᴛʜᴀᴋᴜʀ
+ID: 8267410570 | @KissuHQ | ༄ᶦᶰᵈ᭄ℓєgєи∂✧kìຮຮu࿐™
+
+
+❌ FAILED TO SEND: 17
+--------------------------------------------------
+ID: 492640439 | @Monis_007 | MONIS | Error: Could not find the input entity for PeerUser(user_id=492640439) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 1489171303 | @unknown | Harry | Error: Could not find the input entity for PeerUser(user_id=1489171303) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 5935452677 | @CypherBinu | ༺⟆ 𝙈𝙧 𝘽𝙞𝙣𝙪 ⟅༻ | Error: Could not find the input entity for PeerUser(user_id=5935452677) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 5999685581 | @unknown | Nuzumi | Error: Could not find the input entity for PeerUser(user_id=5999685581) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 6286724764 | @DarkDevil_404 | DARK DEVIL | Error: Could not find the input entity for PeerUser(user_id=6286724764) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 6363717342 | @I_L00ST | ！Σ(×_×;)! | Error: Could not find the input entity for PeerUser(user_id=6363717342) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 6646786564 | @darkie404 | ⏤͟͟͞͞𝗖𝘆𝗯𝗲𝗿 𝗜𝗻𝘃𝗲𝘀𝘁𝗶𝗴𝗮𝘁𝗼𝗿 | Error: Could not find the input entity for PeerUser(user_id=6646786564) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 7403099394 | @unknown | Dₑₘₒₙ_ₖᵢₙg👑 | Error: Could not find the input entity for PeerUser(user_id=7403099394) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 7605697089 | @unknown | ⏤͟͟͞͞ 𝗥ΛΝ𝗚ΞΟ𝗨𝗧 | Error: Could not find the input entity for PeerUser(user_id=7605697089) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 7707859083 | @Amesbu | 𓍯𓂃𓏧♡ —͟͞𖣘 | Error: Could not find the input entity for PeerUser(user_id=7707859083) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 7715339270 | @Dracomalfoydan | Draco | Error: Could not find the input entity for PeerUser(user_id=7715339270) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 7852122268 | @unknown | Xxx remixes | Error: Could not find the input entity for PeerUser(user_id=7852122268) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 8016136157 | @xitqt | ~ XITQT ? 👾❤️‍🔥 | Error: Could not find the input entity for PeerUser(user_id=8016136157) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 8182739997 | @ERTRTTGTGGTTGTFTHGHUGHH | 𝓓𝓔𝓜𝓞𝓝 𝓚𝓘𝓝𝓖 | Error: Could not find the input entity for PeerUser(user_id=8182739997) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 8250954468 | @unknown | Chike | Error: Could not find the input entity for PeerUser(user_id=8250954468) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 8363786286 | @unknown | Hariom | Error: Could not find the input entity for PeerUser(user_id=8363786286) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+ID: 8495775725 | @Xploit_raavan | ‎⸸𝕏𝕡𝕝𝕠𝕚𝕥ℝ𝕒𝕒𝕧𝕒𝕟⸸ | Error: Could not find the input entity for PeerUser(user_id=8495775725) (PeerUser). Please read https://docs.telethon.dev/en/stable/concepts/entities.html to find out more details.
+
+
+==================================================
+Total Users: 19
