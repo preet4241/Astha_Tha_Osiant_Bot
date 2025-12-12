@@ -463,7 +463,6 @@ async def start_handler(event):
     else:
         user_data = get_user(sender.id)
         buttons = [
-            [Button.inline('🛠️ Tools', b'user_tools')],
             [Button.inline('👤 Profile', b'user_profile'), Button.inline('❓ Help', b'user_help')],
             [Button.inline('ℹ️ About', b'user_about')],
         ]
@@ -1662,50 +1661,18 @@ async def callback_handler(event):
         await event.edit('🛠️ TOOLS\n\nSelect a tool to use:', buttons=buttons)
 
     elif data == b'user_tools':
-        # Check access before showing tools
-        access_check = await check_user_access(sender.id)
-        if not access_check['allowed']:
-            if access_check['reason'] == 'banned':
-                await event.answer('🚫 You are BANNED!', alert=True)
-            elif access_check['reason'] == 'not_subscribed':
-                msg = '⚠️ Please join these channels first:\n\n'
-                buttons = []
-                for ch in access_check['channels']:
-                    ch_username = ch['username']
-                    if not ch_username.startswith('@'):
-                        ch_username = '@' + ch_username
-                    msg += f"📺 {ch['title']}: {ch_username}\n"
-                    buttons.append([Button.url(f"Join {ch['title']}", f"https://t.me/{ch['username']}")])
-                buttons.append([Button.inline('✅ Check Again', b'check_subscription')])
-                await event.edit(msg, buttons=buttons)
+        groups = get_all_groups()
+        if not groups:
+            msg = '❌ No groups connected to this bot yet.\n\nTools can only be used in connected groups.'
+            buttons = [[Button.inline('🔙 Back', b'user_back')]]
+            await event.edit(msg, buttons=buttons)
             return
-
-        tools_map = [
-            ('number_info', '📱 Number Info', b'use_number_info'),
-            ('aadhar_info', '🆔 Aadhar Info', b'use_aadhar_info'),
-            ('aadhar_family', '👨‍👩‍👧‍👦 Aadhar to Family', b'use_aadhar_family'),
-            ('vehicle_info', '🚗 Vehicle Info', b'use_vehicle_info'),
-            ('ifsc_info', '🏦 IFSC Info', b'use_ifsc_info'),
-            ('pak_num', '🇵🇰 Pak Num Info', b'use_pak_num'),
-            ('pincode_info', '📍 Pin Code Info', b'use_pincode_info'),
-            ('imei_info', '📱 IMEI Info', b'use_imei_info'),
-            ('ip_info', '🌐 IP Info', b'use_ip_info'),
-        ]
-
-        active_tools = []
-        for tool_key, tool_name, callback in tools_map:
-            if get_tool_status(tool_key):
-                active_tools.append((tool_name, callback))
-
-        buttons = []
-        for i in range(0, len(active_tools), 2):
-            if i + 1 < len(active_tools):
-                buttons.append([Button.inline(active_tools[i][0], active_tools[i][1]), Button.inline(active_tools[i+1][0], active_tools[i+1][1])])
-            else:
-                buttons.append([Button.inline(active_tools[i][0], active_tools[i][1])])
-
-        buttons.append([Button.inline('🔙 Back', b'user_back')])
-        await event.edit('🛠️ TOOLS\n\nSelect a tool to use:', buttons=buttons)
+        
+        msg = '🛠️ CONNECTED GROUPS\n\nYou can use tools in these groups:\n\n'
+        for i, grp in enumerate(groups, 1):
+            msg += f"{i}. {grp['title']}\n"
+        buttons = [[Button.inline('🔙 Back', b'user_back')]]
+        await event.edit(msg, buttons=buttons)
 
     elif data == b'user_profile':
         user = get_user(sender.id)
