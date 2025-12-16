@@ -13,7 +13,8 @@ import shutil
 from datetime import datetime, timedelta
 import threading
 from flask import Flask, render_template
-from hello_messages import get_random_hello_message
+from messages import get_random_hello_message, detect_greeting_type, get_response_for_greeting
+from kick_out import check_message_for_bad_words, add_bad_words, remove_bad_words, get_bad_words_count, get_bad_words_file_content, parse_bad_words_input
 
 app = Flask(__name__)
 bot_status = {"running": False, "start_time": None}
@@ -54,6 +55,7 @@ api_field_mapping_temp = {}  # Store pending API field mappings: {user_id: {'api
 panel_owner = {}  # Track which user owns which panel message: {(chat_id, msg_id): user_id}
 group_commands = {}  # Track ongoing group commands: {chat_id: {user_id: command_info}}
 chat_tool_session = {}  # Scoped tool sessions: {(chat_id, user_id): tool_name}
+bad_words_action_temp = {}  # Bad words management: {user_id: 'add' or 'remove'}
 
 async def safe_answer(event, text="", alert=False):
     """Safely answer callback query, handling stale query IDs"""
@@ -1141,6 +1143,7 @@ async def callback_handler(event):
             [Button.inline('📺 Sub-Force', b'setting_sub_force'), Button.inline('👥 Groups', b'owner_groups')],
             [Button.inline('📝 Start Text', b'setting_start_text'), Button.inline('💾 Backup', b'setting_backup')],
             [Button.inline('❓ Help Desk', b'setting_help_desk'), Button.inline('ℹ️ About Desk', b'setting_about_desk')],
+            [Button.inline('🚫 Bad Words', b'setting_bad_words')],
             [Button.inline('🔙 Back', b'owner_back')],
         ]
         settings_text = "⚙️ **BOT SETTINGS**\n\nConfigure your bot settings:"
@@ -1216,6 +1219,40 @@ async def callback_handler(event):
         backup_channel_temp[sender.id] = 'restore'
         buttons = [[Button.inline('🔙 Back', b'setting_backup')]]
         await event.edit('💾 BACKUP NOW\n\n📤 Send me the database file (.db) to restore.\n\n⚠️ Warning: This will replace the current database!', buttons=buttons)
+
+    elif data == b'setting_bad_words':
+        bad_words_count = get_bad_words_count()
+        buttons = [
+            [Button.inline('➕ Add', b'bad_words_add'), Button.inline('➖ Remove', b'bad_words_remove')],
+            [Button.inline('📄 File', b'bad_words_file')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        bad_words_text = f"🚫 **BAD WORDS SETTINGS**\n\n📊 Total Keywords: {bad_words_count}\n\n🔹 Add - Add new bad words\n🔹 Remove - Remove existing words\n🔹 File - Download bad words file"
+        await event.edit(bad_words_text, buttons=buttons)
+
+    elif data == b'bad_words_add':
+        bad_words_action_temp[sender.id] = 'add'
+        buttons = [[Button.inline('❌ Cancel', b'setting_bad_words')]]
+        add_text = "➕ **ADD BAD WORDS**\n\n📝 Send bad words to add:\n\n**Format:**\n• Comma separated: word1, word2, word3\n• One per line:\nword1\nword2\nword3\n\n📎 You can also send a .txt file with words"
+        await event.edit(add_text, buttons=buttons)
+
+    elif data == b'bad_words_remove':
+        bad_words_action_temp[sender.id] = 'remove'
+        buttons = [[Button.inline('❌ Cancel', b'setting_bad_words')]]
+        remove_text = "➖ **REMOVE BAD WORDS**\n\n📝 Send words to remove:\n\n**Format:**\n• Comma separated: word1, word2, word3\n• One per line:\nword1\nword2\nword3"
+        await event.edit(remove_text, buttons=buttons)
+
+    elif data == b'bad_words_file':
+        try:
+            file_content = get_bad_words_file_content()
+            filename = 'kick_out.txt'
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(file_content)
+            await client.send_file(sender.id, filename, caption="📄 **Bad Words List**\n\nYeh file mein saare bad words hain jo bot detect karega.")
+            os.remove(filename)
+            await safe_answer(event, "📄 File sent!", alert=False)
+        except Exception as e:
+            await safe_answer(event, f"Error: {str(e)}", alert=True)
 
     elif data == b'setting_tools_handler':
         tools_map = [
@@ -2190,6 +2227,46 @@ async def message_handler(event):
 
         raise events.StopPropagation
 
+    # Handle bad words add/remove (text or file)
+    if sender.id in bad_words_action_temp:
+        action = bad_words_action_temp[sender.id]
+        words_text = ""
+        
+        # Check if it's a file
+        if event.file and event.file.name and event.file.name.endswith('.txt'):
+            try:
+                temp_file = "temp_bad_words.txt"
+                await event.download_media(file=temp_file)
+                with open(temp_file, 'r', encoding='utf-8') as f:
+                    words_text = f.read()
+                os.remove(temp_file)
+            except Exception as e:
+                await event.respond(f'❌ Error reading file: {str(e)}', buttons=[[Button.inline('🔙 Back', b'setting_bad_words')]])
+                raise events.StopPropagation
+        elif event.text:
+            words_text = event.text.strip()
+        
+        if words_text:
+            words = parse_bad_words_input(words_text)
+            if words:
+                if action == 'add':
+                    added = add_bad_words(words)
+                    bad_words_action_temp[sender.id] = None
+                    if added:
+                        await event.respond(f'✅ Added {len(added)} new words!\n\n📝 Words: {", ".join(added[:10])}{"..." if len(added) > 10 else ""}', buttons=[[Button.inline('🔙 Back', b'setting_bad_words')]])
+                    else:
+                        await event.respond('⚠️ All words already exist!', buttons=[[Button.inline('🔙 Back', b'setting_bad_words')]])
+                elif action == 'remove':
+                    removed = remove_bad_words(words)
+                    bad_words_action_temp[sender.id] = None
+                    if removed:
+                        await event.respond(f'✅ Removed {len(removed)} words!\n\n📝 Words: {", ".join(removed[:10])}{"..." if len(removed) > 10 else ""}', buttons=[[Button.inline('🔙 Back', b'setting_bad_words')]])
+                    else:
+                        await event.respond('⚠️ No matching words found to remove!', buttons=[[Button.inline('🔙 Back', b'setting_bad_words')]])
+            else:
+                await event.respond('❌ No valid words found!', buttons=[[Button.inline('🔙 Back', b'setting_bad_words')]])
+        raise events.StopPropagation
+
     # Handle API field mapping input (Step 2 of API add)
     if sender.id in api_field_mapping_temp:
         mapping_info = api_field_mapping_temp[sender.id]
@@ -2375,11 +2452,11 @@ Or type **"skip"** to show full response.'''
                     return
             else:
                 await event.respond('❌ Invalid format. Use: ID number, @username, or forward message.', buttons=[[Button.inline('🔙 Back', b'setting_backup')]])
-                return
+                raise events.StopPropagation
 
         if not ch_id or not ch_name:
             await event.respond('❌ Send one of: ID, @username, or forward a message.', buttons=[[Button.inline('🔙 Back', b'setting_backup')]])
-            return
+            raise events.StopPropagation
 
         set_backup_channel(ch_id, ch_name, ch_title)
         backup_channel_temp[sender.id] = None
@@ -2478,11 +2555,11 @@ Or type **"skip"** to show full response.'''
                     return
             else:
                 await event.respond('❌ Invalid format. Use:\n- Channel ID (number)\n- @username\n- https://t.me/+xxx invite link\n- Forward message from channel')
-                return
+                raise events.StopPropagation
 
         if not ch_id or not ch_name:
             await event.respond('❌ Send one of: ID, @username, invite link, or forward a message.')
-            return
+            raise events.StopPropagation
 
         if channel_exists(ch_name):
             buttons = [[Button.inline('🔙 Back', b'setting_sub_force')]]
@@ -2529,11 +2606,11 @@ Or type **"skip"** to show full response.'''
                 grp_title = grp_input[1:]
             else:
                 await event.respond('Invalid format. Use: ID number, @username, or forward message.')
-                return
+                raise events.StopPropagation
 
         if not grp_id or not grp_name:
             await event.respond('Send one of: ID, @username, or forward a message.')
-            return
+            raise events.StopPropagation
 
         if group_exists(grp_id):
             buttons = [[Button.inline('Back', b'owner_groups')]]
@@ -2903,24 +2980,64 @@ async def member_joined_handler(event):
 @client.on(events.NewMessage(incoming=True))
 async def group_message_handler(event):
     try:
-        if event.is_group:
-            chat = await event.get_chat()
-            grp_id = chat.id
-
-            sender = await event.get_sender()
-
-            if not sender or not chat:
-                return
+        if not event.is_group:
+            return
             
-            # Check if group is active - if not, don't track messages
-            if not is_group_active(grp_id):
-                # Group is removed, don't track messages
-                print(f"[LOG] ⏭️ Group '{chat.title}' is removed - ignoring message")
-                return
+        chat = await event.get_chat()
+        grp_id = chat.id
 
-            # Track messages only in active groups
-            add_user(sender.id, sender.username or 'unknown', sender.first_name or 'User')
-            increment_messages(sender.id)
+        sender = await event.get_sender()
+
+        if not sender or not chat:
+            return
+        
+        # Check if group is active - if not, don't track messages
+        if not is_group_active(grp_id):
+            print(f"[LOG] ⏭️ Group '{chat.title}' is removed - ignoring message")
+            return
+
+        # Track messages only in active groups
+        add_user(sender.id, sender.username or 'unknown', sender.first_name or 'User')
+        increment_messages(sender.id)
+        
+        # Skip if message is forwarded or has no text (to avoid wrongful detection)
+        if event.forward or not event.text:
+            return
+            
+        # Check for bad words in message (only sender-authored text)
+        has_bad_word, found_words = check_message_for_bad_words(event.text)
+        if has_bad_word:
+            user_name = sender.first_name or sender.username or "User"
+            warning_count = add_warning(grp_id, sender.id, 0, "Bad language")
+            
+            if warning_count >= 3:
+                try:
+                    # Check if bot has kick permissions
+                    bot_perms = await client.get_permissions(chat, 'me')
+                    if bot_perms.ban_users:
+                        await client.kick_participant(chat, sender.id)
+                        warn_msg = await event.reply(f"🚫 **{user_name}** ko group se kick kar diya gaya!\n\n⚠️ Reason: 3 warnings for bad language\n📋 Detected: {', '.join(found_words[:3])}")
+                        await schedule_message_delete(warn_msg, 60)
+                    else:
+                        warn_msg = await event.reply(f"⚠️ **{user_name}** should be kicked but bot has no ban permissions!")
+                        await schedule_message_delete(warn_msg, 30)
+                except Exception as kick_err:
+                    print(f"[LOG] ❌ Could not kick user: {kick_err}")
+            else:
+                warn_msg = await event.reply(f"⚠️ **Warning {warning_count}/3** - {user_name}\n\n🚫 Bad language detected!\n📋 Word: ||{found_words[0]}||\n\n⛔ 3 warnings = Kick from group")
+                await schedule_message_delete(warn_msg, 30)
+            return
+        
+        # Check for greetings and respond (only for short messages likely to be greetings)
+        if len(event.text) < 50:
+            greeting_type = detect_greeting_type(event.text)
+            if greeting_type:
+                user_name = sender.first_name or sender.username or "Friend"
+                response = get_response_for_greeting(greeting_type, user_name)
+                if response:
+                    greeting_msg = await event.reply(response)
+                    await schedule_message_delete(greeting_msg, 120)
+                    
     except Exception as e:
         print(f"[LOG] ❌ Error in group_message_handler: {e}")
 
@@ -4402,7 +4519,7 @@ def run_flask():
     import socket
     
     # Create server with SO_REUSEADDR
-    server = make_server('0.0.0.0', 8000, app, threaded=True)
+    server = make_server('0.0.0.0', 5000, app, threaded=True)
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.serve_forever()
 
@@ -4472,5 +4589,5 @@ def run_bot():
 if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    print("Flask server started on port 8000")
+    print("Flask server started on port 5000")
     run_bot()
