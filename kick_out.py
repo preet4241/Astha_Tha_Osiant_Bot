@@ -2,6 +2,7 @@
 import re
 import json
 import os
+from fuzzywuzzy import fuzz
 
 BAD_WORDS_FILE = 'bad_words.json'
 
@@ -79,21 +80,40 @@ def get_bad_words_file_content():
     return content
 
 def check_message_for_bad_words(text):
+    """
+    Check message for bad words using BOTH regex AND fuzzywuzzy matching.
+    - Step 1: Regex matching for exact/word boundary matches (highest confidence)
+    - Step 2: Fuzzy matching for typos and variations (medium-high confidence)
+    """
     if not text:
         return False, []
     
     text_lower = text.lower()
-    text_lower = re.sub(r'[^a-zA-Z0-9\s]', '', text_lower)
+    # Remove special characters but keep spaces
+    text_clean = re.sub(r'[^a-zA-Z0-9\s]', '', text_lower)
     
     bad_words = load_bad_words()
     found_words = []
     
+    # STEP 1: Regex matching (highest confidence)
     for word in bad_words:
         word_pattern = r'\b' + re.escape(word) + r'\b'
-        if re.search(word_pattern, text_lower):
+        if re.search(word_pattern, text_clean):
             found_words.append(word)
-        elif word in text_lower:
+            continue
+        
+        # Fallback: simple substring match if regex didn't work
+        if word in text_clean:
             found_words.append(word)
+    
+    # STEP 2: Fuzzy matching for typos (only if no exact match found)
+    if not found_words and len(text_clean.split()) <= 10:  # Max 10 words to check
+        for word in bad_words:
+            # Use token_set_ratio for better matching with word variations
+            score = fuzz.token_set_ratio(text_clean, word)
+            # Require 80% confidence for fuzzy match to avoid false positives
+            if score >= 80:
+                found_words.append(word)
     
     return len(found_words) > 0, found_words
 

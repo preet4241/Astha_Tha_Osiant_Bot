@@ -1222,12 +1222,46 @@ async def callback_handler(event):
 
     elif data == b'setting_bad_words':
         bad_words_count = get_bad_words_count()
+        bad_words_enabled = get_setting('bad_words_filter_enabled', '1') == '1'
+        status_text = "✅ ON" if bad_words_enabled else "❌ OFF"
+        toggle_btn = b'bad_words_toggle_off' if bad_words_enabled else b'bad_words_toggle_on'
+        toggle_text = "🔴 Turn OFF" if bad_words_enabled else "🟢 Turn ON"
+        
         buttons = [
+            [Button.inline(toggle_text, toggle_btn)],
             [Button.inline('➕ Add', b'bad_words_add'), Button.inline('➖ Remove', b'bad_words_remove')],
             [Button.inline('📄 File', b'bad_words_file')],
             [Button.inline('🔙 Back', b'owner_settings')],
         ]
-        bad_words_text = f"🚫 **BAD WORDS SETTINGS**\n\n📊 Total Keywords: {bad_words_count}\n\n🔹 Add - Add new bad words\n🔹 Remove - Remove existing words\n🔹 File - Download bad words file"
+        bad_words_text = f"🚫 **BAD WORDS SETTINGS**\n\n📊 Total Keywords: {bad_words_count}\n📡 Status: {status_text}\n\n🔹 Toggle - Enable/Disable filter\n🔹 Add - Add new bad words\n🔹 Remove - Remove existing words\n🔹 File - Download bad words file"
+        await event.edit(bad_words_text, buttons=buttons)
+    
+    elif data == b'bad_words_toggle_on':
+        set_setting('bad_words_filter_enabled', '1')
+        await safe_answer(event, "✅ Bad word filter is now ON", alert=True)
+        # Refresh the settings panel
+        bad_words_count = get_bad_words_count()
+        buttons = [
+            [Button.inline("🔴 Turn OFF", b'bad_words_toggle_off')],
+            [Button.inline('➕ Add', b'bad_words_add'), Button.inline('➖ Remove', b'bad_words_remove')],
+            [Button.inline('📄 File', b'bad_words_file')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        bad_words_text = f"🚫 **BAD WORDS SETTINGS**\n\n📊 Total Keywords: {bad_words_count}\n📡 Status: ✅ ON\n\n🔹 Toggle - Enable/Disable filter\n🔹 Add - Add new bad words\n🔹 Remove - Remove existing words\n🔹 File - Download bad words file"
+        await event.edit(bad_words_text, buttons=buttons)
+    
+    elif data == b'bad_words_toggle_off':
+        set_setting('bad_words_filter_enabled', '0')
+        await safe_answer(event, "❌ Bad word filter is now OFF", alert=True)
+        # Refresh the settings panel
+        bad_words_count = get_bad_words_count()
+        buttons = [
+            [Button.inline("🟢 Turn ON", b'bad_words_toggle_on')],
+            [Button.inline('➕ Add', b'bad_words_add'), Button.inline('➖ Remove', b'bad_words_remove')],
+            [Button.inline('📄 File', b'bad_words_file')],
+            [Button.inline('🔙 Back', b'owner_settings')],
+        ]
+        bad_words_text = f"🚫 **BAD WORDS SETTINGS**\n\n📊 Total Keywords: {bad_words_count}\n📡 Status: ❌ OFF\n\n🔹 Toggle - Enable/Disable filter\n🔹 Add - Add new bad words\n🔹 Remove - Remove existing words\n🔹 File - Download bad words file"
         await event.edit(bad_words_text, buttons=buttons)
 
     elif data == b'bad_words_add':
@@ -2705,6 +2739,10 @@ Or type **"skip"** to show full response.'''
             info_text += f"📅 Joined: {target_user['joined'][:10]}\n"
             info_text += f"⏰ Full Join Date: {target_user['joined']}\n"
             info_text += f"🔄 Status: {'🚫 BANNED' if target_user['banned'] else '✅ ACTIVE'}\n"
+            if target_user['banned'] and target_user.get('ban_reason'):
+                info_text += f"📋 Ban Reason: {target_user['ban_reason']}\n"
+                if target_user.get('ban_date'):
+                    info_text += f"📅 Ban Date: {target_user['ban_date'][:10]}\n"
             info_text += f"📊 User Status: {target_user['status']}\n"
             buttons = [[Button.inline('🔙 Back', b'owner_users')]]
             await event.respond(info_text, buttons=buttons)
@@ -2779,6 +2817,7 @@ Or type **"skip"** to show full response.'''
                 await client.send_message(int(user_id_str), formatted_message)
                 sent_count += 1
                 sent_users.append(f"ID: {user['user_id']} | @{user['username']} | {user['first_name']}")
+                await asyncio.sleep(0.3)  # Delay to avoid FloodWait
             except Exception as e:
                 failed_count += 1
                 failed_users.append(f"ID: {user['user_id']} | @{user['username']} | {user['first_name']} | Error: {str(e)}")
@@ -3004,8 +3043,13 @@ async def group_message_handler(event):
         if event.forward or not event.text:
             return
             
-        # Check for bad words in message (only sender-authored text)
-        has_bad_word, found_words = check_message_for_bad_words(event.text)
+        # Check for bad words in message (skip for admins and only sender-authored text)
+        # Also check if bad word filter is enabled
+        bad_words_filter_enabled = get_setting('bad_words_filter_enabled', '1') == '1'
+        is_admin = await check_admin_permission(event, sender.id)
+        has_bad_word, found_words = False, []
+        if bad_words_filter_enabled and not is_admin:
+            has_bad_word, found_words = check_message_for_bad_words(event.text)
         if has_bad_word:
             user_name = sender.first_name or sender.username or "User"
             warning_count = add_warning(grp_id, sender.id, 0, "Bad language")
@@ -3042,8 +3086,8 @@ async def group_message_handler(event):
         print(f"[LOG] ❌ Error in group_message_handler: {e}")
 
 async def check_admin_permission(event, sender_id=None):
-    """Check if user has admin permission (bot owner, group owner, or group admin or anonymous admin)"""
-    from telethon.tl.types import PeerChannel, PeerUser
+    """Check if user has admin permission (bot owner, group owner, or group admin)"""
+    from telethon.tl.types import ChannelParticipantAdmin, ChannelParticipantCreator, PeerChannel, PeerUser
 
     # Bot owner has permission everywhere
     if sender_id and sender_id == owner_id:
@@ -3053,37 +3097,34 @@ async def check_admin_permission(event, sender_id=None):
     if event.is_private:
         return sender_id == owner_id
 
-    # In group, check if user is group owner or admin or anonymous admin
+    # In group, check if user is group owner or admin
     if event.is_group:
         try:
             chat = await event.get_chat()
 
-            # First check: is this an anonymous admin?
-            # Anonymous posts have from_id as PeerChannel (the channel used for anonymous posting)
+            # Check for anonymous admin
             if hasattr(event, 'from_id') and isinstance(event.from_id, PeerChannel):
-                # This is an anonymous admin, return True
                 print(f"Anonymous admin detected in group {chat.title}")
                 return True
 
-            # Second check: is this from the message's from_id as PeerChannel?
             if event.message and hasattr(event.message, 'from_id'):
                 if isinstance(event.message.from_id, PeerChannel):
                     print(f"Anonymous admin detected via message.from_id in group {chat.title}")
                     return True
 
-            # Third check: regular user with sender_id
+            # Check regular user using get_participant instead of get_permissions
             if sender_id:
                 try:
-                    participant = await client.get_permissions(chat, sender_id)
-                    if participant.is_creator or participant.is_admin:
+                    participant = await client.get_participant(chat, sender_id)
+                    if isinstance(participant, (ChannelParticipantAdmin, ChannelParticipantCreator)):
                         print(f"User {sender_id} is admin/creator in {chat.title}")
                         return True
                 except Exception as perm_err:
-                    print(f"Permission check failed for {sender_id}: {perm_err}")
+                    print(f"[LOG] Admin check failed for {sender_id}: {perm_err}")
                     pass
 
         except Exception as e:
-            print(f"Error in check_admin_permission: {e}")
+            print(f"[LOG] Error in check_admin_permission: {e}")
             pass
 
     return False
@@ -3168,7 +3209,7 @@ async def ban_handler(event):
         await send_error_message(event, '⚠️ Arre bhai yeh user pehle se banned hai!')
     else:
         # Ban user in bot database
-        ban_user(target_user['user_id'])
+        ban_user(target_user['user_id'], reason)
 
         # If in group, properly ban user using EditBannedRequest
         if event.is_group:
@@ -3398,7 +3439,7 @@ async def gban_handler(event):
         await event.respond('⚠️ Arre bhai yeh user pehle se banned hai!')
     else:
         # Ban user in bot database
-        ban_user(target_user['user_id'])
+        ban_user(target_user['user_id'], reason)
 
         # Kick from group
         try:
@@ -3499,6 +3540,10 @@ async def info_handler(event):
     info_text += f"📅 Join Date: {target_user['joined'][:10]}\n"
     info_text += f"⏰ Puri Date: {target_user['joined']}\n"
     info_text += f"🔄 Status: {'🚫 BANNED' if target_user['banned'] else '✅ ACTIVE'}\n"
+    if target_user['banned'] and target_user.get('ban_reason'):
+        info_text += f"📋 Ban Reason: {target_user['ban_reason']}\n"
+        if target_user.get('ban_date'):
+            info_text += f"📅 Ban Date: {target_user['ban_date'][:10]}\n"
     info_text += f"📊 User Level: {target_user['status']}\n"
 
     if event.is_group:

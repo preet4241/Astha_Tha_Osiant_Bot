@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import random
 import re
+from fuzzywuzzy import fuzz
 
 HELLO_MESSAGES = [
     "👋 Namaste {name}! Kaise ho bhai? Umeed hai sab badhiya chal raha hai! 😊",
@@ -273,12 +274,45 @@ def get_random_sad_response(name: str) -> str:
     return message.format(name=name)
 
 def detect_greeting_type(text: str) -> str:
+    """
+    Detect greeting type using BOTH regex AND fuzzywuzzy matching.
+    - First tries exact/regex matching (high precision)
+    - Then uses fuzzy matching for typos/variations (high recall)
+    - Returns greeting type only if confidence is high enough
+    """
     text_lower = text.lower().strip()
     
+    # STEP 1: Try regex matching for exact/word boundary matches (highest confidence)
     for greeting_type, keywords in GREETING_KEYWORDS.items():
         for keyword in keywords:
-            if keyword in text_lower or text_lower == keyword:
+            # Use word boundary regex to avoid false positives
+            # e.g., "good" shouldn't match "goodbye" or "goodness"
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            if re.search(pattern, text_lower):
+                print(f"[GREETING] Regex match: '{keyword}' matched in '{text_lower}' (type: {greeting_type})")
                 return greeting_type
+    
+    # STEP 2: Try fuzzy matching for typos and variations (medium-high confidence)
+    # Only use fuzzy matching if message is short (likely to be a greeting)
+    if len(text_lower.split()) <= 5:  # Max 5 words for greeting
+        best_match = None
+        best_score = 0
+        best_type = None
+        
+        for greeting_type, keywords in GREETING_KEYWORDS.items():
+            for keyword in keywords:
+                # Use token_set_ratio for better matching with word order variations
+                score = fuzz.token_set_ratio(text_lower, keyword)
+                
+                # Require 75% confidence for fuzzy match (helps avoid false positives)
+                if score >= 75 and score > best_score:
+                    best_score = score
+                    best_match = keyword
+                    best_type = greeting_type
+        
+        if best_type:
+            print(f"[GREETING] Fuzzy match: '{best_match}' matched in '{text_lower}' with {best_score}% confidence (type: {best_type})")
+            return best_type
     
     return None
 

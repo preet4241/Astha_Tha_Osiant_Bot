@@ -1,220 +1,169 @@
+# 🤖 Telegram Bot - Complete Guide
 
-# Telegram Multi-Tool Bot
+A feature-rich Telegram bot with advanced user management, tools integration, broadcasting, and group management capabilities.
 
-A feature-rich Telegram bot built with Telethon for information retrieval and user management, with an integrated web status dashboard.
+## 🎯 Key Features
 
-## Features
+### 👥 User Management
+- **Ban System**: Global ban (GBAN) with reasons and timestamps
+- **User Tracking**: Track all users with message counts and join dates
+- **Ban Reasons**: Every ban is logged with reason and date
+- **Quick Info**: View detailed user information anytime
 
-### Web Status Dashboard
-- Real-time bot status display (Online/Offline)
-- User statistics (Total, Active, Banned)
-- Message count tracking
-- Tool and connection statistics
-- Beautiful animated interface with floating particles
-- Auto-refresh every 30 seconds
-- API endpoint for status data
-- Mobile responsive design
+### 🛠️ Tools Integration
+- **9 Tools Available**:
+  - 📱 Number Info - Get number details
+  - 🆔 Aadhar Info - Aadhar number verification
+  - 👨‍👩‍👧‍👦 Aadhar to Family - Get family details from Aadhar
+  - 🚗 Vehicle Info - Vehicle registration details
+  - 🏦 IFSC Info - Bank IFSC code lookup
+  - 🇵🇰 Pak Num Info - Pakistani number info
+  - 📍 Pin Code Info - Postal code details
+  - 📱 IMEI Info - IMEI number lookup
+  - 🌐 IP Info - IP address information
 
-### Information Tools (9 Total)
-- **Number Info** - Get details about Indian mobile numbers
-- **Aadhar Info** - Look up Aadhar card information
-- **Aadhar to Family** - Find family details linked to Aadhar
-- **Vehicle Info** - Get Indian vehicle registration details
-- **IFSC Info** - Bank IFSC code lookup
-- **Pakistan Number Info** - Pakistani phone number lookup
-- **Pin Code Info** - Indian postal code information
-- **IMEI Info** - Mobile IMEI number lookup
-- **IP Info** - IP address geolocation and details
+### 📢 Broadcasting
+- Send messages to all users at once
+- Custom placeholders support
+- FloodWait protection (0.3s delays)
+- Detailed delivery statistics
 
-### User Commands
-All users can use these commands:
-- `/start` - Start the bot and access main menu
-- `/help` - View help section with all available commands
-- `/hello` - Get a personalized greeting
-- `/time` - Check current time
+### 🚫 Content Moderation
+- **Bad Word Filter** with ON/OFF toggle
+- **Dual Detection**: Regex + Fuzzywuzzy matching
+- Automatic warning system (3 warnings = kick)
+- Admin exemption from filter
+- 80% fuzzy confidence threshold for typo detection
 
-### Tool Commands (Direct Access)
-Users can directly access tools via commands:
-- `/num <number>` - Phone number lookup
-- `/adhar <number>` - Aadhar information
-- `/family <aadhar>` - Aadhar family lookup
-- `/vhe <vehicle>` - Vehicle information
-- `/ifsc <code>` - IFSC code details
-- `/pak <number>` - Pakistan number info
-- `/pin <pincode>` - PIN code lookup
-- `/imei <number>` - IMEI information
-- `/ip <address>` - IP address details
+### 💬 Smart Responses
+- **Greeting Detection**: Regex + Fuzzy matching
+- Responds to: Hello, Hi, Hey, Good Morning/Night/Evening/Afternoon
+- Automatic welcome messages for new members
+- "How are you", "Thank you", "Bye", emotional responses
 
-### Owner Commands
-Bot owner has access to:
-- `/ban <user_id/@username>` - Ban a user from using the bot
-- `/unban <user_id/@username>` - Unban a previously banned user
-- `/info <user_id/@username>` - Get detailed user information
-- All user commands plus full bot management via menu
+### 💾 Data Management
+- Auto-backup to Telegram channel
+- Database restore capability
+- Scheduled backups (configurable interval)
+- Full database export
 
-### Bot Management
-- **User Management** - Ban/unban users, view user statistics, search users
-- **Channel Management** - Force-subscribe channels with automatic join verification
-- **Group Management** - Connect and manage Telegram groups with customizable welcome messages
-- **Broadcast System** - Send messages to all users with detailed delivery stats
-- **Status Dashboard** - Comprehensive bot statistics and active tools overview
-- **Database Backup** - Automatic and manual database backups to Telegram channel
-- **Tools Handler** - Enable/disable tools, manage multiple API endpoints per tool
+### 👥 Group Management
+- Auto-group tracking
+- Member welcome messages
+- Warning system per group
+- Ban management per group
+- Admin permission verification
 
-### Advanced Features
-- **Multi-API Support** - Each tool supports multiple API endpoints with automatic failover
-- **Load Balancing** - Distributes API requests across multiple endpoints
-- **Customizable Messages** - Personalize start messages, help text, about text, and welcome messages
-- **Placeholder System** - Dynamic content with variables like {first_name}, {greeting}, {date}, etc.
-- **Anonymous Admin Support** - Works with Telegram anonymous admin posts in groups
-- **Auto-Welcome** - Sends random welcome messages to new group members (auto-deletes after 15 seconds)
-- **Subscription Verification** - Ensures users join required channels before using the bot
+## 📊 User Info Display
 
-## Requirements
+When checking user information, you'll see:
+```
+📋 USER KI DETAILS 👤
 
-- Python 3.11+
-- Telegram API credentials (API ID, API Hash, Bot Token)
-
-## Installation
-
-1. Clone the repository
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
+🆔 ID: 123456789
+📛 Username: @username
+📝 Naam: John Doe
+💬 Total Messages: 145
+📅 Join Date: 2024-01-15
+⏰ Full Date: 2024-01-15T10:30:45.123456
+🔄 Status: 🚫 BANNED
+📋 Ban Reason: Spam and abuse
+📅 Ban Date: 2024-12-19
+📊 User Level: user
 ```
 
-3. Set environment variables:
-```bash
-export API_ID="your_api_id"
-export API_HASH="your_api_hash"
-export BOT_TOKEN="your_bot_token"
-export OWNER_ID="your_telegram_user_id"
+## 🔧 Admin Commands
+
+### Ban Commands
+- `/ban <user_id>` - Global ban a user
+- `/ban @username` - Ban by username
+- `/ban <user_id> reason here` - Ban with reason
+
+### User Management
+- `/unban <user_id>` - Unban a user
+- `/info <user_id>` - Get user details
+- `/info @username` - Get info by username
+- `/info` (reply to message) - Get info about message sender
+
+### Group Commands
+- `/warn <user_id>` - Warn user (3 warnings = auto-kick)
+- `/warn @username` - Warn by username
+- `/help` - View all commands
+
+## 🎛️ Settings Panel
+
+Access via bot start menu:
+
+### Bad Words Filter
+- **Toggle ON/OFF**: Stop/Start bad word detection
+- **Add Words**: Add new bad words to filter
+- **Remove Words**: Delete words from filter
+- **Download List**: Export current bad words list
+
+### Tools Management
+- Enable/Disable each of 9 tools
+- Configure custom APIs
+- Set response field mappings
+
+### Broadcasting
+- Send messages to all users
+- Use placeholders for personalization
+- View delivery statistics
+
+### Backup Settings
+- Set backup channel
+- Configure backup interval
+- Manual backup/restore
+- View last backup time
+
+## 📝 Ban Reason System
+
+The bot automatically saves:
+- **Ban Reason**: Why the user was banned
+- **Ban Date**: When the ban occurred
+- **Ban Status**: Active/Inactive
+
+This information is visible in:
+1. **User Info Command**: `/info @username`
+2. **User Info Button**: Settings → Users → Info
+3. **Database**: Stored in `bot_database.db`
+
+## 🔐 Admin Requirements
+
+Most commands require:
+- Bot owner (via config)
+- Group owner/admin status
+- Anonymous admin detection
+
+## 🌍 Supported Languages
+
+- English
+- Hindi/Hinglish
+- Multilingual user support
+
+## 📦 Dependencies
+
+```
+telethon>=1.34.0
+aiohttp>=3.9.0
+flask>=3.0.0
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.21.0
 ```
 
-4. Run the bot and web server:
-```bash
-python main.py
-```
+## 🚀 Performance Features
 
-This will start both the Telegram bot and Flask web server on port 5000.
+- Database connection pooling (thread-safe)
+- Async message handling
+- Automatic message cleanup
+- FloodWait protection
+- Efficient caching
 
-## Environment Variables
+## 📧 Support
 
-| Variable | Description |
-|----------|-------------|
-| `API_ID` | Telegram API ID from my.telegram.org |
-| `API_HASH` | Telegram API Hash from my.telegram.org |
-| `BOT_TOKEN` | Bot token from @BotFather |
-| `OWNER_ID` | Your Telegram user ID (owner permissions) |
+For issues or feature requests, contact the bot owner.
 
-## Project Structure
+---
 
-```
-.
-├── main.py              # Main bot logic, handlers, and Flask server
-├── database.py          # SQLite database operations
-├── templates/
-│   └── index.html       # Web dashboard template
-├── requirements.txt     # Python dependencies
-├── bot_database.db      # SQLite database (created automatically)
-├── README.md            # This file
-└── BOT_FEATURES.md      # Detailed feature documentation
-```
-
-## Web Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `/` | Web dashboard with animated status display |
-| `/api/status` | JSON API returning bot status and statistics |
-
-## Database Tables
-
-- **users** - User information, join dates, message counts, and ban status
-- **channels** - Force-subscribe channels with titles and usernames
-- **groups** - Connected Telegram groups
-- **settings** - Bot configuration settings (start texts, help/about messages)
-- **tools** - Tool enable/disable status
-- **tool_apis** - API endpoints for each tool with automatic failover support
-
-## Usage
-
-### For Users
-1. Send `/start` to the bot
-2. Join required channels if prompted
-3. Use the menu buttons or direct commands to access tools
-4. Use `/help` to see all available commands
-5. Check your profile with the Profile button
-
-### For Bot Owner
-1. Access owner dashboard via `/start`
-2. Manage tools, users, and settings through the menu
-3. Configure force-subscribe channels
-4. Set up automatic database backups
-5. Customize all bot messages and welcome texts
-6. Add multiple API endpoints for each tool
-7. Broadcast messages to all users
-8. Use admin commands in groups for quick user management
-
-### Customization Options
-- **Owner Start Text** - Customize greeting shown to bot owner
-- **User Start Text** - Customize greeting shown to regular users
-- **Help Desk** - Edit help message with available placeholders
-- **About Desk** - Edit about message with bot information
-- **Group Welcome** - Set custom welcome messages for new group members
-
-### Available Placeholders
-Use these in your custom messages:
-- `{greeting}` - Time-based greeting (Good Morning/Afternoon/Evening/Night)
-- `{first_name}` - User's first name
-- `{username}` - User's username
-- `{user_id}` - User's Telegram ID
-- `{total_users}` - Total registered users
-- `{active_users}` - Active (non-banned) users
-- `{banned_users}` - Total banned users
-- `{total_messages}` - All messages sent to bot
-- `{user_messages}` - Messages sent by specific user
-- `{joined_date}` - User's join date
-- `{date}` - Current date (DD-MM-YYYY)
-- `{time}` - Current time (HH:MM:SS)
-- `{datetime}` - Full date and time
-- `{bot_name}` - Bot name
-
-## Technical Features
-
-- **Asynchronous Architecture** - Built with async/await for high performance
-- **MTProto Protocol** - Uses Telethon for efficient Telegram API communication
-- **SQLite Database** - Lightweight, serverless database (no setup required)
-- **Flask Web Server** - Integrated status dashboard
-- **aiohttp** - Async HTTP client for API calls
-- **Automatic Failover** - Multiple API support with smart fallback
-- **Error Handling** - Comprehensive error handling and logging
-- **Group Compatibility** - Works in private chats and groups
-- **Admin Detection** - Supports anonymous admin posts
-
-## Security
-
-- Owner-only admin controls
-- User ban/unban system
-- Force subscription verification
-- Environment variable configuration
-- No hardcoded credentials
-- Group-based permission checks
-
-## Deployment on Replit
-
-This bot is optimized for Replit deployment:
-1. Fork this Repl
-2. Set environment variables in Secrets
-3. Click Run button
-4. Bot + Web Dashboard starts automatically on port 5000
-
-## Credits
-
-**Powered by ༄ᶦᶰᵈ᭄ℓєgєи∂✧kìຮຮu࿐™**
-Telegram: [t.me/KissuHQ](https://t.me/KissuHQ)
-
-## License
-
-This project is for educational purposes.
+**Bot Version**: 2.0  
+**Last Updated**: December 2024

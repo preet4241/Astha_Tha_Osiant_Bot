@@ -10,7 +10,7 @@ def get_db_file():
 
 def init_db():
     """Initialize SQLite database"""
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -21,7 +21,9 @@ def init_db():
             joined TEXT,
             messages INTEGER DEFAULT 0,
             banned INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'active',
+            ban_reason TEXT,
+            ban_date TEXT
         )
     ''')
 
@@ -47,6 +49,19 @@ def init_db():
 
     conn.commit()
     
+    # Migrate existing users table to add ban_reason and ban_date if missing
+    try:
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'ban_reason' not in columns:
+            cursor.execute('ALTER TABLE users ADD COLUMN ban_reason TEXT')
+            conn.commit()
+        if 'ban_date' not in columns:
+            cursor.execute('ALTER TABLE users ADD COLUMN ban_date TEXT')
+            conn.commit()
+    except Exception as e:
+        print(f"[DB] Migration notice: {e}")
+    
     # Migrate existing groups table to add invite_link if missing
     try:
         cursor.execute("PRAGMA table_info(groups)")
@@ -62,7 +77,7 @@ def init_db():
 def add_user(user_id, username, first_name):
     """Add new user to database"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     try:
@@ -79,7 +94,7 @@ def add_user(user_id, username, first_name):
 def get_user(user_id):
     """Get user from database"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -94,17 +109,20 @@ def get_user(user_id):
             'joined': user[3],
             'messages': user[4],
             'banned': user[5],
-            'status': user[6]
+            'status': user[6],
+            'ban_reason': user[7] if len(user) > 7 else None,
+            'ban_date': user[8] if len(user) > 8 else None
         }
     return None
 
-def ban_user(user_id):
-    """Ban user"""
+def ban_user(user_id, reason=None):
+    """Ban user with optional reason"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
-    cursor.execute('UPDATE users SET banned = 1 WHERE user_id = ?', (user_id,))
+    cursor.execute('UPDATE users SET banned = 1, ban_reason = ?, ban_date = ? WHERE user_id = ?', 
+                   (reason, datetime.now().isoformat() if reason else None, user_id))
     conn.commit()
     conn.close()
     return True
@@ -112,10 +130,10 @@ def ban_user(user_id):
 def unban_user(user_id):
     """Unban user"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
-    cursor.execute('UPDATE users SET banned = 0 WHERE user_id = ?', (user_id,))
+    cursor.execute('UPDATE users SET banned = 0, ban_reason = NULL, ban_date = NULL WHERE user_id = ?', (user_id,))
     conn.commit()
     conn.close()
     return True
@@ -123,7 +141,7 @@ def unban_user(user_id):
 def increment_messages(user_id):
     """Increment message count"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('UPDATE users SET messages = messages + 1 WHERE user_id = ?', (user_id,))
@@ -133,7 +151,7 @@ def increment_messages(user_id):
 def get_all_users():
     """Get all users"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('SELECT * FROM users')
@@ -149,14 +167,16 @@ def get_all_users():
             'joined': user[3],
             'messages': user[4],
             'banned': user[5],
-            'status': user[6]
+            'status': user[6],
+            'ban_reason': user[7] if len(user) > 7 else None,
+            'ban_date': user[8] if len(user) > 8 else None
         }
     return result
 
 def get_banned_users():
     """Get all banned users"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('SELECT * FROM users WHERE banned = 1')
@@ -172,14 +192,16 @@ def get_banned_users():
             'joined': user[3],
             'messages': user[4],
             'banned': user[5],
-            'status': user[6]
+            'status': user[6],
+            'ban_reason': user[7] if len(user) > 7 else None,
+            'ban_date': user[8] if len(user) > 8 else None
         })
     return result
 
 def get_stats():
     """Get bot statistics"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('SELECT COUNT(*) FROM users')
@@ -202,7 +224,7 @@ def get_stats():
 
 def init_settings_table():
     """Initialize settings table"""
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS settings (
@@ -215,7 +237,7 @@ def init_settings_table():
 
 def init_tools_table():
     """Initialize tools status table"""
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tools (
@@ -229,7 +251,7 @@ def init_tools_table():
 def set_tool_status(tool_name, is_active):
     """Set tool active/inactive status"""
     init_tools_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('INSERT OR REPLACE INTO tools (tool_name, is_active) VALUES (?, ?)', (tool_name, 1 if is_active else 0))
     conn.commit()
@@ -238,7 +260,7 @@ def set_tool_status(tool_name, is_active):
 def get_tool_status(tool_name):
     """Get tool active status"""
     init_tools_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT is_active FROM tools WHERE tool_name = ?', (tool_name,))
     result = cursor.fetchone()
@@ -248,7 +270,7 @@ def get_tool_status(tool_name):
 def get_all_active_tools():
     """Get all active tools"""
     init_tools_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT tool_name FROM tools WHERE is_active = 1')
     tools = cursor.fetchall()
@@ -257,7 +279,7 @@ def get_all_active_tools():
 
 def init_tool_apis_table():
     """Initialize tool APIs table"""
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tool_apis (
@@ -285,7 +307,7 @@ def init_tool_apis_table():
 def add_tool_api(tool_name, api_url, response_fields=None):
     """Add API URL for a tool with optional response field mapping"""
     init_tool_apis_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('INSERT INTO tool_apis (tool_name, api_url, added_date, response_fields) VALUES (?, ?, ?, ?)', 
                    (tool_name, api_url, datetime.now().isoformat(), response_fields))
@@ -297,7 +319,7 @@ def add_tool_api(tool_name, api_url, response_fields=None):
 def update_api_response_fields(api_id, response_fields):
     """Update response field mapping for an API"""
     init_tool_apis_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('UPDATE tool_apis SET response_fields = ? WHERE id = ?', (response_fields, api_id))
     conn.commit()
@@ -307,7 +329,7 @@ def update_api_response_fields(api_id, response_fields):
 def get_api_response_fields(api_id):
     """Get response field mapping for an API"""
     init_tool_apis_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT response_fields FROM tool_apis WHERE id = ?', (api_id,))
     result = cursor.fetchone()
@@ -317,7 +339,7 @@ def get_api_response_fields(api_id):
 def remove_tool_api(tool_name, api_id):
     """Remove API from a tool"""
     init_tool_apis_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM tool_apis WHERE id = ? AND tool_name = ?', (api_id, tool_name))
     conn.commit()
@@ -327,7 +349,7 @@ def remove_tool_api(tool_name, api_id):
 def get_tool_apis(tool_name):
     """Get all APIs for a tool"""
     init_tool_apis_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     try:
         cursor.execute('SELECT id, api_url, added_date, response_fields FROM tool_apis WHERE tool_name = ?', (tool_name,))
@@ -345,7 +367,7 @@ def get_tool_apis(tool_name):
 def set_setting(key, value):
     """Set a setting value"""
     init_settings_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', (key, value))
     conn.commit()
@@ -354,7 +376,7 @@ def set_setting(key, value):
 def get_setting(key, default=''):
     """Get a setting value"""
     init_settings_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
     result = cursor.fetchone()
@@ -364,7 +386,7 @@ def get_setting(key, default=''):
 def add_channel(channel_username, channel_title, channel_id=None):
     """Add a channel for force-subscribe"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     # If channel_id is provided, use it; otherwise use username as fallback
@@ -391,7 +413,7 @@ def add_channel(channel_username, channel_title, channel_id=None):
 def remove_channel(channel_username):
     """Remove required channel"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('DELETE FROM channels WHERE channel_username = ?', (channel_username,))
@@ -402,7 +424,7 @@ def remove_channel(channel_username):
 def get_all_channels():
     """Get all required channels"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('SELECT channel_id, channel_username, channel_title, added_date FROM channels ORDER BY added_date DESC')
@@ -423,7 +445,7 @@ def get_all_channels():
 def channel_exists(channel_username):
     """Check if channel already exists"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('SELECT 1 FROM channels WHERE channel_username = ?', (channel_username,))
@@ -435,7 +457,7 @@ def channel_exists(channel_username):
 def increment_channel_join(channel_username):
     """Increment join count for channel"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('UPDATE channels SET joined_count = joined_count + 1 WHERE channel_username = ?', (channel_username,))
@@ -445,7 +467,7 @@ def increment_channel_join(channel_username):
 def deactivate_expired_channels():
     """Deactivate channels that have reached their expiry date"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     current_time = datetime.now().isoformat()
@@ -456,7 +478,7 @@ def deactivate_expired_channels():
 def check_channel_limits():
     """Check and deactivate channels that have reached their join limit"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     cursor.execute('UPDATE channels SET is_active = 0 WHERE join_limit > 0 AND joined_count >= join_limit AND is_active = 1')
@@ -466,7 +488,7 @@ def check_channel_limits():
 def add_group(group_id, group_username, group_title, invite_link=None):
     """Add group or reactivate if already exists"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     try:
@@ -515,7 +537,7 @@ def add_group(group_id, group_username, group_title, invite_link=None):
 def remove_group(group_id):
     """Mark group as removed (deactivate, don't delete)"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     try:
@@ -539,7 +561,7 @@ def remove_group(group_id):
 def is_group_active(group_id):
     """Check if group is active (not removed)"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     try:
@@ -558,7 +580,7 @@ def is_group_active(group_id):
 def get_all_groups():
     """Get all active groups (not removed)"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     try:
@@ -591,7 +613,7 @@ def get_all_groups():
 def group_exists(group_id):
     """Check if group exists and is active"""
     init_db()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     try:
@@ -645,7 +667,7 @@ def get_last_backup_time():
 
 def init_warnings_table():
     """Initialize group warnings table"""
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS group_warnings (
@@ -665,7 +687,7 @@ def init_warnings_table():
 def get_user_warnings(group_id, user_id):
     """Get warning count for user in a group"""
     init_warnings_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT warnings, last_reason FROM group_warnings WHERE group_id = ? AND user_id = ?', (group_id, user_id))
     result = cursor.fetchone()
@@ -677,7 +699,7 @@ def get_user_warnings(group_id, user_id):
 def add_warning(group_id, user_id, warned_by, reason=None):
     """Add a warning to user in group. Returns new warning count."""
     init_warnings_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     
     cursor.execute('SELECT warnings FROM group_warnings WHERE group_id = ? AND user_id = ?', (group_id, user_id))
@@ -704,7 +726,7 @@ def add_warning(group_id, user_id, warned_by, reason=None):
 def remove_warning(group_id, user_id):
     """Remove one warning from user in group. Returns new warning count."""
     init_warnings_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     
     cursor.execute('SELECT warnings FROM group_warnings WHERE group_id = ? AND user_id = ?', (group_id, user_id))
@@ -727,7 +749,7 @@ def remove_warning(group_id, user_id):
 def clear_warnings(group_id, user_id):
     """Clear all warnings for user in group"""
     init_warnings_table()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM group_warnings WHERE group_id = ? AND user_id = ?', (group_id, user_id))
     conn.commit()
