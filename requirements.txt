@@ -5,3 +5,8 @@ fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.21.0
 fuzzywuzzy
 python-Levenshtein
+aiohttp
+flask
+fuzzywuzzy
+python-Levenshtein
+telethon
