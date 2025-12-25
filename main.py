@@ -4767,6 +4767,8 @@ def run_flask():
     import socket
     
     # Create server with SO_REUSEADDR
+    # Replit needs host check bypass for the webview to work
+    app.config['SERVER_NAME'] = None
     server = make_server('0.0.0.0', 5000, app, threaded=True)
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.serve_forever()
