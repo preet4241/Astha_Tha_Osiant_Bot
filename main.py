@@ -200,9 +200,9 @@ async def check_tool_group_access(event):
         # User tried to use tool in private chat - show them the groups
         authorized_groups = get_all_groups()
         if not authorized_groups:
-            return False, "🚫 कोई groups connected नहीं हैं अभी!\n\nBot owner से contact करें।"
+            return False, "🚫 No groups are currently connected!\n\nPlease contact the bot owner."
         
-        msg = "🚫 Tools केवल connected groups में काम करते हैं!\n\n"
+        msg = "🚫 Tools only work in connected groups!\n\n"
         msg += f"📋 Connected Groups ({len(authorized_groups)}):\n\n"
         buttons = []
         
@@ -263,7 +263,7 @@ async def check_tool_group_access(event):
                     buttons.append([Button.url(button_text, join_url)])
                     msg += f"✅ {grp['title']}\n"
                 else:
-                    msg += f"• {grp['title']} (Bot ko admin banao)\n"
+                    msg += f"• {grp['title']} (Make bot admin)\n"
             except Exception as e:
                 print(f"[LOG] ⚠️ Could not get invite link for group {grp['group_id']}: {e}")
                 msg += f"• {grp['title']}\n"
@@ -271,7 +271,7 @@ async def check_tool_group_access(event):
         if buttons:
             return False, (msg, buttons)
         else:
-            msg += "\n⚠️ Koi button show nahi ho sakta. Bot ko group mein admin banao ya group remove karke invite link ke saath add karo."
+            msg += "\n⚠️ No buttons can be shown. Make bot admin in the group or re-add the group with an invite link."
             return False, msg
     
     chat = await event.get_chat()
@@ -281,7 +281,7 @@ async def check_tool_group_access(event):
         if grp['group_id'] == chat.id:
             return True, None
     
-    return False, "❌ यह group authorized नहीं है। Bot को इस group में add करवाएं।"
+    return False, "❌ This group is not authorized. Please add the bot to this group."
 
 async def call_tool_api(tool_name, validated_input):
     """Call the API for a tool and return JSON response. Try multiple APIs on error."""
@@ -432,30 +432,87 @@ def detect_json_keys(data, max_depth=3, current_depth=0):
     
     return keys
 
-def format_json_as_text(data):
+def format_json_as_text(data, query=None):
     """Format JSON data as readable text (not JSON code block)"""
-    if not data:
+    if data is None:
         return "No data found"
     
     text = ""
-    if isinstance(data, dict):
-        if 'data' in data and isinstance(data['data'], list):
-            for item in data['data']:
-                if isinstance(item, dict):
-                    for key, value in item.items():
-                        text += f"• {key.replace('_', ' ').title()}: {value}\n"
-                    text += "\n"
-        else:
-            for key, value in data.items():
-                if key not in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp']:
-                    if isinstance(value, (dict, list)):
-                        text += f"• {key.replace('_', ' ').title()}:\n"
-                    else:
-                        text += f"• {key.replace('_', ' ').title()}: {value}\n"
+    # Add Query and Header if this is the top level call
+    if query:
+        text += f"🔍 **Your Query**: `{query}`\n"
+        text += "📝 **Information Found**:\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
     
-    text += "\n━━━━━━━━━━━━━━━━━━━━━\n"
-    text += "Owner: @Cyber_as\n"
-    text += "Developed by: @KissuHQ"
+    # If it's a list, format each item
+    if isinstance(data, list):
+        if not data:
+            return text + "No data found"
+        list_text = ""
+        for i, item in enumerate(data, 1):
+            if isinstance(item, (dict, list)):
+                if len(data) > 1:
+                    list_text += f"\n📍 **Record {i}**\n"
+                list_text += format_json_as_text(item)
+                list_text += "\n"
+            else:
+                list_text += f"• `{item}`\n"
+        text += list_text.strip()
+        return text.strip()
+
+    dict_text = ""
+    if isinstance(data, dict):
+        if not data:
+            return text + "No details available"
+            
+        # Try to find common data containers first
+        data_keys = ['data', 'Data', 'Data1', 'data1', 'result', 'info', 'details', 'response', 'items', 'records', 'objects']
+        found_container = False
+        container_data = None
+        for k in data_keys:
+            if k in data and isinstance(data[k], (list, dict)) and data[k]:
+                container_data = data[k]
+                found_container = True
+                break
+        
+        if found_container:
+            # Process container content
+            dict_text += format_json_as_text(container_data)
+        else:
+            # No container found, show all relevant fields from top level
+            for key in sorted(data.keys()):
+                value = data[key]
+                if key.lower() not in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp', 'status', 'error', 'msg', 'message']:
+                    formatted_key = key.replace('_', ' ').title()
+                    if isinstance(value, dict):
+                        if value:
+                            dict_text += f"\n📍 **{formatted_key}**\n"
+                            dict_text += format_json_as_text(value) + "\n"
+                    elif isinstance(value, list):
+                        if value:
+                            dict_text += f"\n📍 **{formatted_key}**\n"
+                            dict_text += format_json_as_text(value) + "\n"
+                    else:
+                        # Clean up formatting: remove trailing backticks or quotes if they exist in value
+                        clean_value = str(value).strip('`').strip()
+                        # Handling empty email or specific empty fields
+                        if not clean_value and key.lower() == 'email':
+                            clean_value = "Not Provided"
+                        
+                        if clean_value:
+                            dict_text += f"• **{formatted_key}**: `{clean_value}`\n"
+                        else:
+                            dict_text += f"• **{formatted_key}**: `Not Available`\n"
+        text += dict_text
+    else:
+        text += str(data)
+    
+    if "\n" in text and "@Cyber_as" not in text:
+        text = text.strip()
+        text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
+        text += "Owner: @Cyber_as\n"
+        text += "Developed by: @KissuHQ"
+        
     return text.strip()
 
 def get_greeting():
@@ -478,21 +535,21 @@ def get_default_owner_text():
     return "{greeting} Boss! 👑\n\n🤖 BOT Status: ✅ Online\n👥 Users: {total_users} | Active: {active_users}\n\n🎛️ Control Desk:"
 
 def get_default_user_text():
-    return "{greeting} {first_name}! 😊\n\n🔹 Kya karna chahte ho aap?"
+    return "{greeting} {first_name}! 😊\n\n🔹 What would you like to do?"
 
 def get_default_welcome_messages():
     """Return list of default welcome messages for groups"""
     return [
-        "🏛️ Fame ke hall mein aapka swagat hai @{username}! {group_name} ko aap pe garv hai!",
-        "🎉 @{username} ka dil se swagat! {group_name} ab aur bhi zabardast ho gaya tumhare saath!",
-        "🌟 Welcome aboard @{username}! {group_name} aapka khuli baahon se swagat karta hai!",
-        "👋 Hey @{username}! {group_name} ko khushi hai ki tum join kiye!",
-        "🎊 Jannat mein aapka swagat @{username}! {group_name} ab aur bhi achha ho gaya!",
-        "✨ Namaste @{username}! {group_name} ko aapki presence se izzat mili!",
-        "🎭 Show mein swagat @{username}! {group_name} tumhara entertain karne ke liye ready hai!",
-        "🚀 @{username} blast off! {group_name} tumhe ek epic journey pe le jaa raha hai!",
-        "💎 Pyare member @{username} swagat! {group_name} tumhari arrival ko treasure karta hai!",
-        "🎪 Aa jao @{username}! {group_name} sabse bade show mein tumhara swagat karta hai!"
+        "🏛️ Welcome to the Hall of Fame @{username}! {group_name} is proud of you!",
+        "🎉 Warm welcome to @{username}! {group_name} just got better with you!",
+        "🌟 Welcome aboard @{username}! {group_name} welcomes you with open arms!",
+        "👋 Hey @{username}! {group_name} is happy you joined!",
+        "🎊 Welcome to paradise @{username}! {group_name} is now even better!",
+        "✨ Greetings @{username}! {group_name} is honored by your presence!",
+        "🎭 Welcome to the show @{username}! {group_name} is ready to entertain you!",
+        "🚀 @{username} blast off! {group_name} is taking you on an epic journey!",
+        "💎 Welcome dear member @{username}! {group_name} treasures your arrival!",
+        "🎪 Come in @{username}! {group_name} welcomes you to the big show!"
     ]
 
 def get_tool_back_button(tool_name):
@@ -544,11 +601,21 @@ def extract_json_fields(data, fields):
     Skips fields that don't exist (graceful handling).
     Also searches common data container keys like Data1, data, result, response, etc.
     """
-    if not fields or not data:
+    if not data:
+        return data
+        
+    # If no fields are provided, return everything
+    if not fields or fields == "[]" or fields == '""' or fields == "null":
         return data
     
     try:
-        field_list = json.loads(fields) if isinstance(fields, str) else fields
+        if isinstance(fields, str):
+            if fields.startswith('[') and fields.endswith(']'):
+                field_list = json.loads(fields)
+            else:
+                field_list = [f.strip() for f in fields.split(',') if f.strip()]
+        else:
+            field_list = fields
     except:
         return data
     
@@ -556,41 +623,32 @@ def extract_json_fields(data, fields):
         return data
     
     result = {}
-    
-    # Check if any field uses dot notation
     has_paths = any('.' in f for f in field_list)
     
     if has_paths:
-        # Extract using dot notation paths - skip missing fields
         for field in field_list:
             value = get_nested_value(data, field)
             if value is not None:
-                # Use last part of path as key
                 key = field.split('.')[-1]
                 result[key] = value
-            # If value not found, skip it (don't error)
     else:
-        # Simple field extraction
         if isinstance(data, dict):
-            # Common data container keys to search in (case-insensitive matching)
             data_container_keys = ['data', 'Data', 'Data1', 'data1', 'result', 'Result', 
                                    'response', 'Response', 'info', 'Info', 'details', 'Details',
-                                   'records', 'Records', 'items', 'Items', 'results', 'Results']
+                                   'records', 'Records', 'items', 'Items', 'results', 'Results',
+                                   'objects', 'list', 'data_list']
             
-            # First try to find data container
             container_data = None
             for container_key in data_container_keys:
-                if container_key in data:
+                if container_key in data and data[container_key]:
                     container_data = data[container_key]
                     break
             
-            # If found a container with list/dict, extract from it
             if container_data is not None:
                 if isinstance(container_data, list):
                     result_list = []
                     for item in container_data:
                         if isinstance(item, dict):
-                            # Only extract fields that exist in the item
                             filtered_item = {k: v for k, v in item.items() if k in field_list}
                             if filtered_item:
                                 result_list.append(filtered_item)
@@ -599,18 +657,14 @@ def extract_json_fields(data, fields):
                     if result_list:
                         result = result_list if len(result_list) > 1 else result_list[0]
                 elif isinstance(container_data, dict):
-                    # Extract fields from the container dict
                     result = {k: v for k, v in container_data.items() if k in field_list}
             
-            # If no container found or no results, try top-level extraction
             if not result:
-                # Filter top-level keys - only include fields that exist
                 result = {k: v for k, v in data.items() if k in field_list}
         elif isinstance(data, list):
             result = []
             for item in data:
                 if isinstance(item, dict):
-                    # Only extract fields that exist
                     filtered = {k: v for k, v in item.items() if k in field_list}
                     if filtered:
                         result.append(filtered)
@@ -619,7 +673,6 @@ def extract_json_fields(data, fields):
         else:
             result = data
     
-    # Return result if has data, otherwise return all data
     return result if result else data
 
 def get_random_welcome_message(username, group_name):
@@ -1282,7 +1335,7 @@ async def callback_handler(event):
             filename = 'kick_out.txt'
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(file_content)
-            await client.send_file(sender.id, filename, caption="📄 **Bad Words List**\n\nYeh file mein saare bad words hain jo bot detect karega.")
+            await client.send_file(sender.id, filename, caption="📄 **Bad Words List**\n\nThis file contains all the bad words the bot will detect.")
             os.remove(filename)
             await safe_answer(event, "📄 File sent!", alert=False)
         except Exception as e:
@@ -2386,13 +2439,13 @@ Or type **"skip"** to show full response.'''
                 data, error = await call_tool_api(tool_key, validated)
 
                 if data:
-                    response = format_json_as_text(data)
+                    response = format_json_as_text(data, query=validated)
                     if len(response) > 4000:
                         response = response[:3997] + "..."
                     await processing_msg.edit(response)
                     asyncio.create_task(send_back_button_delayed(client, sender.id, processing_msg.id, back_btn, 2))
                 else:
-                    msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+                    msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
                     await processing_msg.edit(msg, buttons=[[Button.inline('👈 Back', back_btn)]])
 
                 del tool_session[sender.id]
@@ -2962,7 +3015,7 @@ async def member_joined_handler(event):
                     )
                     await client(EditBannedRequest(chat, user.id, banned_rights))
                     print(f"[LOG] 🚫 Banned user {user.first_name} tried to rejoin {grp_title} - BANNED!")
-                    kick_msg = await client.send_message(chat, f"🚫 @{user.username or user.first_name} banned hai! Auto-banned!")
+                    kick_msg = await client.send_message(chat, f"🚫 @{user.username or user.first_name} is banned! Auto-banned!")
                     await schedule_message_delete(kick_msg, 30)
                 except Exception as kick_err:
                     print(f"[LOG] ❌ Could not ban user: {kick_err}")
@@ -3060,7 +3113,7 @@ async def group_message_handler(event):
                     bot_perms = await client.get_permissions(chat, 'me')
                     if bot_perms.ban_users:
                         await client.kick_participant(chat, sender.id)
-                        warn_msg = await event.reply(f"🚫 **{user_name}** ko group se kick kar diya gaya!\n\n⚠️ Reason: 3 warnings for bad language\n📋 Detected: {', '.join(found_words[:3])}")
+                        warn_msg = await event.reply(f"🚫 **{user_name}** has been kicked from the group!\n\n⚠️ Reason: 3 warnings for bad language\n📋 Detected: {', '.join(found_words[:3])}")
                         await schedule_message_delete(warn_msg, 60)
                     else:
                         warn_msg = await event.reply(f"⚠️ **{user_name}** should be kicked but bot has no ban permissions!")
@@ -3143,7 +3196,7 @@ async def ban_handler(event):
     # Check admin permission (allows anonymous admins too)
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await send_error_message(event, '🔐 Bhai permission nahi hai tere paas! ❌\n\n👑 Sirf bot owner ya group admins yeh use kar sakte hain!')
+        await send_error_message(event, '🔐 You do not have permission! ❌\n\n👑 Only the bot owner or group admins can use this!')
         raise events.StopPropagation
 
     # Get target user and reason
@@ -3183,10 +3236,10 @@ async def ban_handler(event):
                 except:
                     pass
         else:
-            await send_error_message(event, '❌ Galat format bhai!\n\n📌 Sahi format: `/ban <user_id> reason` ya `/ban @username reason` ya msg pe reply karke `/ban reason`')
+            await send_error_message(event, '❌ Invalid format!\n\n📌 Correct format: `/ban <user_id> reason` or `/ban @username reason` or reply to a message with `/ban reason`')
             raise events.StopPropagation
     else:
-        await send_error_message(event, '❌ Koi user specify nahi kiya bhai!\n\n📌 Use: `/ban <user_id> reason` ya `/ban @username reason` ya msg pe reply karke `/ban reason`')
+        await send_error_message(event, '❌ No user specified!\n\n📌 Use: `/ban <user_id> reason` or `/ban @username reason` or reply to a message with `/ban reason`')
         raise events.StopPropagation
 
     # In group, verify target user is in the same group
@@ -3195,18 +3248,18 @@ async def ban_handler(event):
             chat = await event.get_chat()
             target_in_group = await client.get_permissions(chat, target_user_id)
             if not target_in_group:
-                await send_error_message(event, '❌ Bhai yeh user is group mein nahi hai!')
+                await send_error_message(event, '❌ This user is not in this group!')
                 raise events.StopPropagation
         except Exception as e:
-            await send_error_message(event, '❌ Bhai yeh user is group mein nahi hai!')
+            await send_error_message(event, '❌ This user is not in this group!')
             raise events.StopPropagation
 
     if not target_user:
-        await send_error_message(event, '❌ Yeh user bot ke database mein nahi hai bhai!')
+        await send_error_message(event, '❌ This user is not in the bot database!')
         raise events.StopPropagation
 
     if target_user.get('banned'):
-        await send_error_message(event, '⚠️ Arre bhai yeh user pehle se banned hai!')
+        await send_error_message(event, '⚠️ This user is already banned!')
     else:
         # Ban user in bot database
         ban_user(target_user['user_id'], reason)
@@ -3251,7 +3304,7 @@ async def ban_handler(event):
         except:
             pass
         try:
-            ban_msg = f'🚫 Tujhe BAN kar diya gaya hai{group_name}! ❌'
+            ban_msg = f'🚫 You have been BANNED{group_name}! ❌'
             if reason:
                 ban_msg += f'\n📋 Reason: {reason}'
             await client.send_message(target_user['user_id'], ban_msg)
@@ -3274,7 +3327,7 @@ async def unban_handler(event):
     # Check admin permission (allows anonymous admins too)
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Bhai permission nahi hai tere paas! ❌\n\n👑 Sirf bot owner ya group admins yeh use kar sakte hain!')
+        await event.respond('🔐 You do not have permission! ❌\n\n👑 Only the bot owner or group admins can use this!')
         raise events.StopPropagation
 
     # Get target user
@@ -3301,10 +3354,10 @@ async def unban_handler(event):
                     target_user_id = user['user_id']
                     break
         else:
-            await event.respond('❌ Galat format bhai!\n\n📌 Sahi format: `/unban <user_id>` ya `/unban @username` ya msg pe reply karke `/unban`')
+            await event.respond('❌ Invalid format!\n\n📌 Correct format: `/unban <user_id>` or `/unban @username` or reply to a message with `/unban`')
             raise events.StopPropagation
     else:
-        await event.respond('❌ Koi user specify nahi kiya bhai!\n\n📌 Use: `/unban <user_id>` ya `/unban @username` ya msg pe reply karke `/unban`')
+        await event.respond('❌ No user specified!\n\n📌 Use: `/unban <user_id>` or `/unban @username` or reply to a message with `/unban`')
         raise events.StopPropagation
 
     # In group, verify target user is in the same group
@@ -3313,18 +3366,18 @@ async def unban_handler(event):
             chat = await event.get_chat()
             target_in_group = await client.get_permissions(chat, target_user_id)
             if not target_in_group:
-                await event.respond('❌ Bhai yeh user is group mein nahi hai!')
+                await event.respond('❌ This user is not in this group!')
                 raise events.StopPropagation
         except Exception as e:
-            await event.respond('❌ Bhai yeh user is group mein nahi hai!')
+            await event.respond('❌ This user is not in this group!')
             raise events.StopPropagation
 
     if not target_user:
-        await event.respond('❌ Yeh user bot ke database mein nahi hai bhai!')
+        await event.respond('❌ This user is not in the bot database!')
         raise events.StopPropagation
 
     if not target_user.get('banned'):
-        await event.respond('⚠️ Arre bhai yeh user banned hi nahi hai!')
+        await event.respond('⚠️ This user is not even banned!')
     else:
         # Unban user in bot database
         unban_user(target_user['user_id'])
@@ -3350,7 +3403,7 @@ async def unban_handler(event):
         except:
             pass
         try:
-            await client.send_message(target_user['user_id'], f'✅ Tera ban hata diya gaya hai{group_name}! 🎉\n\nAb tu wapas use kar sakta hai!')
+            await client.send_message(target_user['user_id'], f'✅ Your ban has been lifted{group_name}! 🎉\n\nYou can use the bot again!')
         except Exception:
             pass
 
@@ -3370,7 +3423,7 @@ async def gban_handler(event):
     # Check admin permission (allows anonymous admins too)
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Bhai permission nahi hai tere paas! ❌\n\n👑 Sirf bot owner ya group admins yeh use kar sakte hain!')
+        await event.respond('🔐 You do not have permission! ❌\n\n👑 Only the bot owner or group admins can use this!')
         raise events.StopPropagation
 
     # Get target user and reason
@@ -3410,10 +3463,10 @@ async def gban_handler(event):
                 except:
                     pass
         else:
-            await event.respond('❌ Galat format bhai!\n\n📌 Sahi format: `/gban <user_id> reason` ya `/gban @username reason` ya msg pe reply karke `/gban reason`')
+            await event.respond('❌ Invalid format!\n\n📌 Correct format: `/gban <user_id> reason` or `/gban @username reason` or reply to a message with `/gban reason`')
             raise events.StopPropagation
     else:
-        await event.respond('❌ Koi user specify nahi kiya bhai!\n\n📌 Use: `/gban <user_id> reason` ya `/gban @username reason` ya msg pe reply karke `/gban reason`')
+        await event.respond('❌ No user specified!\n\n📌 Use: `/gban <user_id> reason` or `/gban @username reason` or reply to a message with `/gban reason`')
         raise events.StopPropagation
 
     # In group, verify target user is in the same group
@@ -3422,21 +3475,21 @@ async def gban_handler(event):
             chat = await event.get_chat()
             target_in_group = await client.get_permissions(chat, target_user_id)
             if not target_in_group:
-                await event.respond('❌ Bhai yeh user is group mein nahi hai!')
+                await event.respond('❌ This user is not in this group!')
                 raise events.StopPropagation
         except Exception as e:
-            await event.respond('❌ Bhai yeh user is group mein nahi hai!')
+            await event.respond('❌ This user is not in this group!')
             raise events.StopPropagation
     else:
-        await event.respond('❌ /gban sirf group mein use ho sakta hai bhai!')
+        await event.respond('❌ /gban can only be used in groups!')
         raise events.StopPropagation
 
     if not target_user:
-        await event.respond('❌ Yeh user bot ke database mein nahi hai bhai!')
+        await event.respond('❌ This user is not in the bot database!')
         raise events.StopPropagation
 
     if target_user.get('banned'):
-        await event.respond('⚠️ Arre bhai yeh user pehle se banned hai!')
+        await event.respond('⚠️ This user is already banned!')
     else:
         # Ban user in bot database
         ban_user(target_user['user_id'], reason)
@@ -3450,7 +3503,7 @@ async def gban_handler(event):
             print(f"Could not kick user from group: {kick_err}")
             group_name = " from bot"
 
-        result_text = f"🔨 **User GLOBAL BAN (GBAN) HO GAYA!** ✅\n\n👤 User ID: `{target_user['user_id']}`\n📛 Username: @{target_user['username']}\n📝 Name: {target_user['first_name']}\n🌍 Ban Location: {group_name}"
+        result_text = f"🔨 **User GLOBAL BAN (GBAN) SUCCESSFUL!** ✅\n\n👤 User ID: `{target_user['user_id']}`\n📛 Username: @{target_user['username']}\n📝 Name: {target_user['first_name']}\n🌍 Ban Location: {group_name}"
         if reason:
             result_text += f"\n📋 Reason: {reason}"
         response_msg = await event.respond(result_text)
@@ -3460,7 +3513,7 @@ async def gban_handler(event):
         except:
             pass
         try:
-            ban_msg = f'🚫 Tujhe GLOBAL BAN kar diya gaya hai! ❌\n\nTu ab is group aur bot dono se ban hai.'
+            ban_msg = f'🚫 You have been GLOBAL BANNED! ❌\n\nYou are now banned from this group and the bot.'
             if reason:
                 ban_msg += f'\n📋 Reason: {reason}'
             await client.send_message(target_user['user_id'], ban_msg)
@@ -3483,7 +3536,7 @@ async def info_handler(event):
     # Check admin permission (allows anonymous admins too)
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Bhai permission nahi hai tere paas! ❌\n\n👑 Sirf bot owner ya group admins yeh use kar sakte hain!')
+        await event.respond('🔐 You do not have permission! ❌\n\n👑 Only the bot owner or group admins can use this!')
         raise events.StopPropagation
 
     # Get target user
@@ -3510,10 +3563,10 @@ async def info_handler(event):
                     target_user_id = user['user_id']
                     break
         else:
-            await event.respond('❌ Galat format bhai!\n\n📌 Sahi format: `/info <user_id>` ya `/info @username` ya msg pe reply karke `/info`')
-            raise events.StopPropagation
+        await event.respond('❌ Invalid format!\n\n📌 Correct format: `/info <user_id>` or `/info @username` or reply to a message with `/info`')
+        raise events.StopPropagation
     else:
-        await event.respond('❌ Koi user specify nahi kiya bhai!\n\n📌 Use: `/info <user_id>` ya `/info @username` ya msg pe reply karke `/info`')
+        await event.respond('❌ No user specified!\n\n📌 Use: `/info <user_id>` or `/info @username` or reply to a message with `/info`')
         raise events.StopPropagation
 
     # In group, verify target user is in the same group
@@ -3522,23 +3575,23 @@ async def info_handler(event):
             chat = await event.get_chat()
             target_in_group = await client.get_permissions(chat, target_user_id)
             if not target_in_group:
-                await event.respond('❌ Bhai yeh user is group mein nahi hai!')
+                await event.respond('❌ This user is not in this group!')
                 raise events.StopPropagation
         except Exception as e:
-            await event.respond('❌ Bhai yeh user is group mein nahi hai!')
+            await event.respond('❌ This user is not in this group!')
             raise events.StopPropagation
 
     if not target_user:
-        await event.respond('❌ Yeh user bot ke database mein nahi hai bhai!')
+        await event.respond('❌ This user is not in the bot database!')
         raise events.StopPropagation
 
-    info_text = f"📋 **USER KI DETAILS** 👤\n\n"
+    info_text = f"📋 **USER DETAILS** 👤\n\n"
     info_text += f"🆔 ID: `{target_user['user_id']}`\n"
     info_text += f"📛 Username: @{target_user['username']}\n"
-    info_text += f"📝 Naam: {target_user['first_name']}\n"
+    info_text += f"📝 Name: {target_user['first_name']}\n"
     info_text += f"💬 Total Messages: {target_user['messages']}\n"
     info_text += f"📅 Join Date: {target_user['joined'][:10]}\n"
-    info_text += f"⏰ Puri Date: {target_user['joined']}\n"
+    info_text += f"⏰ Full Date: {target_user['joined']}\n"
     info_text += f"🔄 Status: {'🚫 BANNED' if target_user['banned'] else '✅ ACTIVE'}\n"
     if target_user['banned'] and target_user.get('ban_reason'):
         info_text += f"📋 Ban Reason: {target_user['ban_reason']}\n"
@@ -3558,7 +3611,7 @@ async def info_handler(event):
 async def warn_handler(event):
     """Warn a user in group. 3 warnings = auto-ban"""
     if not event.is_group:
-        await event.respond('⚠️ Yeh command sirf groups mein kaam karta hai!')
+        await event.respond('⚠️ This command only works in groups!')
         raise events.StopPropagation
     
     chat = await event.get_chat()
@@ -3570,7 +3623,7 @@ async def warn_handler(event):
     
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Permission nahi hai! Sirf admins warn kar sakte hain!')
+        await event.respond('🔐 No permission! Only admins can warn!')
         raise events.StopPropagation
     
     target_user_id = None
@@ -3595,20 +3648,20 @@ async def warn_handler(event):
                 entity = await client.get_entity(user_input)
                 target_user_id = entity.id
             except:
-                await event.respond('❌ User nahi mila!')
+                await event.respond('❌ User not found!')
                 raise events.StopPropagation
     else:
-        await event.respond('❌ Koi user specify nahi kiya!\n\n📌 Use: `/warn @username reason` ya msg pe reply karke `/warn reason`')
+        await event.respond('❌ No user specified!\n\n📌 Use: `/warn @username reason` or reply to a message with `/warn reason`')
         raise events.StopPropagation
     
     if not target_user_id:
-        await event.respond('❌ User nahi mila!')
+        await event.respond('❌ User not found!')
         raise events.StopPropagation
     
     try:
         target_perms = await client.get_permissions(chat, target_user_id)
         if target_perms.is_admin or target_perms.is_creator:
-            await event.respond('❌ Admins ko warn nahi kar sakte!')
+            await event.respond('❌ Cannot warn admins!')
             raise events.StopPropagation
     except:
         pass
@@ -3627,17 +3680,17 @@ async def warn_handler(event):
         try:
             await client.edit_permissions(chat, target_user_id, view_messages=False)
             clear_warnings(chat.id, target_user_id)
-            warn_text = f"🚨 **AUTO BAN!** 🚨\n\n👤 {target_name} ({target_username})\n⚠️ 3 warnings complete!\n🔨 Group se ban kar diya gaya!"
+            warn_text = f"🚨 **AUTO BAN!** 🚨\n\n👤 {target_name} ({target_username})\n⚠️ 3 warnings complete!\n🔨 Banned from group!"
             if reason:
                 warn_text += f"\n📝 Last Reason: {reason}"
         except Exception as e:
-            warn_text = f"⚠️ **WARNING {new_count}/3** ⚠️\n\n👤 {target_name} ({target_username})\n❌ Auto-ban fail hua: {str(e)[:50]}"
+            warn_text = f"⚠️ **WARNING {new_count}/3** ⚠️\n\n👤 {target_name} ({target_username})\n❌ Auto-ban failed: {str(e)[:50]}"
     else:
         warn_text = f"⚠️ **WARNING {new_count}/3** ⚠️\n\n👤 {target_name} ({target_username})"
         if reason:
             warn_text += f"\n📝 Reason: {reason}"
         if new_count == 2:
-            warn_text += "\n\n⚠️ Ek aur warning pe BAN ho jaoge!"
+            warn_text += "\n\n⚠️ One more warning and you will be BANNED!"
     
     # Send response and schedule auto-delete after 5 min
     response_msg = await event.respond(warn_text)
@@ -3652,7 +3705,7 @@ async def warn_handler(event):
 async def delwarn_handler(event):
     """Delete message and warn the user"""
     if not event.is_group:
-        await event.respond('⚠️ Yeh command sirf groups mein kaam karta hai!')
+        await event.respond('⚠️ This command only works in groups!')
         raise events.StopPropagation
     
     chat = await event.get_chat()
@@ -3664,16 +3717,16 @@ async def delwarn_handler(event):
     
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Permission nahi hai!')
+        await event.respond('🔐 No permission!')
         raise events.StopPropagation
     
     if not event.reply_to_msg_id:
-        await event.respond('❌ Kisi message pe reply karke use karo!')
+        await event.respond('❌ Use this by replying to a message!')
         raise events.StopPropagation
     
     reply_msg = await event.get_reply_message()
     if not reply_msg or not reply_msg.from_id:
-        await event.respond('❌ User ka message nahi mila!')
+        await event.respond('❌ User message not found!')
         raise events.StopPropagation
     
     target_user_id = reply_msg.from_id.user_id
@@ -3683,7 +3736,7 @@ async def delwarn_handler(event):
     try:
         target_perms = await client.get_permissions(chat, target_user_id)
         if target_perms.is_admin or target_perms.is_creator:
-            await event.respond('❌ Admins ko warn nahi kar sakte!')
+            await event.respond('❌ Cannot warn admins!')
             raise events.StopPropagation
     except:
         pass
@@ -3693,7 +3746,7 @@ async def delwarn_handler(event):
         await reply_msg.delete()
         msg_deleted = True
     except Exception as e:
-        # Message delete fail hua but warning still add hogi
+        # Message delete failed but warning still added
         pass
     
     new_count = add_warning(chat.id, target_user_id, sender_id, reason)
@@ -3706,13 +3759,13 @@ async def delwarn_handler(event):
         target_name = 'User'
         target_username = f"ID: {target_user_id}"
     
-    delete_status = "🗑️ Message deleted" if msg_deleted else "⚠️ Message delete nahi hua"
+    delete_status = "🗑️ Message deleted" if msg_deleted else "⚠️ Message not deleted"
     
     if new_count >= 3:
         try:
             await client.edit_permissions(chat, target_user_id, view_messages=False)
             clear_warnings(chat.id, target_user_id)
-            warn_text = f"{delete_status} + 🚨 **AUTO BAN!**\n\n👤 {target_name} ({target_username})\n⚠️ 3 warnings complete!\n🔨 Group se ban!"
+            warn_text = f"{delete_status} + 🚨 **AUTO BAN!**\n\n👤 {target_name} ({target_username})\n⚠️ 3 warnings complete!\n🔨 Banned from group!"
             if reason:
                 warn_text += f"\n📝 Reason: {reason}"
         except:
@@ -3735,7 +3788,7 @@ async def delwarn_handler(event):
 async def unwarn_handler(event):
     """Remove one warning from user"""
     if not event.is_group:
-        await event.respond('⚠️ Yeh command sirf groups mein kaam karta hai!')
+        await event.respond('⚠️ This command only works in groups!')
         raise events.StopPropagation
     
     chat = await event.get_chat()
@@ -3747,7 +3800,7 @@ async def unwarn_handler(event):
     
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Permission nahi hai!')
+        await event.respond('🔐 No permission!')
         raise events.StopPropagation
     
     target_user_id = None
@@ -3767,19 +3820,19 @@ async def unwarn_handler(event):
                 entity = await client.get_entity(user_input)
                 target_user_id = entity.id
             except:
-                await event.respond('❌ User nahi mila!')
+                await event.respond('❌ User not found!')
                 raise events.StopPropagation
     else:
-        await event.respond('❌ Koi user specify nahi kiya!\n\n📌 Use: `/unwarn @username` ya msg pe reply karke `/unwarn`')
+        await event.respond('❌ No user specified!\n\n📌 Use: `/unwarn @username` or reply to a message with `/unwarn`')
         raise events.StopPropagation
     
     if not target_user_id:
-        await event.respond('❌ User nahi mila!')
+        await event.respond('❌ User not found!')
         raise events.StopPropagation
     
     current = get_user_warnings(chat.id, target_user_id)
     if current['warnings'] == 0:
-        await event.respond('ℹ️ Is user pe koi warning nahi hai!')
+        await event.respond('ℹ️ This user has no warnings!')
         raise events.StopPropagation
     
     new_count = remove_warning(chat.id, target_user_id)
@@ -3792,7 +3845,7 @@ async def unwarn_handler(event):
         target_name = 'User'
         target_username = f"ID: {target_user_id}"
     
-    response_msg = await event.respond(f"✅ Warning hata di!\n\n👤 {target_name} ({target_username})\n⚠️ Current warnings: {new_count}/3")
+    response_msg = await event.respond(f"✅ Warning removed!\n\n👤 {target_name} ({target_username})\n⚠️ Current warnings: {new_count}/3")
     await schedule_message_delete(response_msg, 300)
     try:
         await event.delete()
@@ -3804,7 +3857,7 @@ async def unwarn_handler(event):
 async def mute_handler(event):
     """Mute a user in group"""
     if not event.is_group:
-        await event.respond('⚠️ Yeh command sirf groups mein kaam karta hai!')
+        await event.respond('⚠️ This command only works in groups!')
         raise events.StopPropagation
     
     chat = await event.get_chat()
@@ -3816,7 +3869,7 @@ async def mute_handler(event):
     
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Permission nahi hai!')
+        await event.respond('🔐 No permission!')
         raise events.StopPropagation
     
     target_user_id = None
@@ -3841,20 +3894,20 @@ async def mute_handler(event):
                 entity = await client.get_entity(user_input)
                 target_user_id = entity.id
             except:
-                await event.respond('❌ User nahi mila!')
+                await event.respond('❌ User not found!')
                 raise events.StopPropagation
     else:
-        await event.respond('❌ Koi user specify nahi kiya!\n\n📌 Use: `/mute @username reason` ya msg pe reply karke `/mute reason`')
+        await event.respond('❌ No user specified!\n\n📌 Use: `/mute @username reason` or reply to a message with `/mute reason`')
         raise events.StopPropagation
     
     if not target_user_id:
-        await event.respond('❌ User nahi mila!')
+        await event.respond('❌ User not found!')
         raise events.StopPropagation
     
     try:
         target_perms = await client.get_permissions(chat, target_user_id)
         if target_perms.is_admin or target_perms.is_creator:
-            await event.respond('❌ Admins ko mute nahi kar sakte!')
+            await event.respond('❌ Cannot mute admins!')
             raise events.StopPropagation
     except:
         pass
@@ -3881,7 +3934,7 @@ async def mute_handler(event):
         except:
             pass
     except Exception as e:
-        await event.respond(f'❌ Mute nahi ho paya: {str(e)[:100]}')
+        await event.respond(f'❌ Could not mute user: {str(e)[:100]}')
     
     raise events.StopPropagation
 
@@ -3889,7 +3942,7 @@ async def mute_handler(event):
 async def unmute_handler(event):
     """Unmute a user in group"""
     if not event.is_group:
-        await event.respond('⚠️ Yeh command sirf groups mein kaam karta hai!')
+        await event.respond('⚠️ This command only works in groups!')
         raise events.StopPropagation
     
     chat = await event.get_chat()
@@ -3901,7 +3954,7 @@ async def unmute_handler(event):
     
     has_permission = await check_admin_permission(event, sender_id)
     if not has_permission:
-        await event.respond('🔐 Permission nahi hai!')
+        await event.respond('🔐 No permission!')
         raise events.StopPropagation
     
     target_user_id = None
@@ -3921,14 +3974,14 @@ async def unmute_handler(event):
                 entity = await client.get_entity(user_input)
                 target_user_id = entity.id
             except:
-                await event.respond('❌ User nahi mila!')
+                await event.respond('❌ User not found!')
                 raise events.StopPropagation
     else:
-        await event.respond('❌ Koi user specify nahi kiya!\n\n📌 Use: `/unmute @username` ya msg pe reply karke `/unmute`')
+        await event.respond('❌ No user specified!\n\n📌 Use: `/unmute @username` or reply to a message with `/unmute`')
         raise events.StopPropagation
     
     if not target_user_id:
-        await event.respond('❌ User nahi mila!')
+        await event.respond('❌ User not found!')
         raise events.StopPropagation
     
     try:
@@ -3950,7 +4003,7 @@ async def unmute_handler(event):
         except:
             pass
     except Exception as e:
-        await event.respond(f'❌ Unmute nahi ho paya: {str(e)[:100]}')
+        await event.respond(f'❌ Could not unmute user: {str(e)[:100]}')
     
     raise events.StopPropagation
 
@@ -3971,31 +4024,31 @@ async def num_handler(event):
 
     # Check if tool is active
     if not get_tool_status('number_info'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('📱 **Number Info Tool**\n\n🔹 Use kaise karein: `/num <mobile_number>`\n📝 Example: `/num 7999520665`')
+        await event.respond('📱 **Number Info Tool**\n\n🔹 Usage: `/num <mobile_number>`\n📝 Example: `/num 7999520665`')
         raise events.StopPropagation
 
     number = match.group(1).strip()
     validated = validate_phone_number(number)
 
     if not validated:
-        await event.respond('❌ Galat number bhai!\n\n📌 Format: 10 digit number hona chahiye\n📝 Example: 7999520665')
+        await event.respond('❌ Invalid number!\n\n📌 Format: Must be 10 digits\n📝 Example: 7999520665')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, check ho raha hai...')
+    processing_msg = await event.respond('⏳ Processing, please wait...')
     data, error = await call_tool_api('number_info', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4019,31 +4072,31 @@ async def adhar_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('aadhar_info'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('🆔 **Aadhar Info Tool**\n\n🔹 Use kaise karein: `/adhar <aadhar_number>`\n📝 Example: `/adhar 123456789012`')
+        await event.respond('🆔 **Aadhar Info Tool**\n\n🔹 Usage: `/adhar <aadhar_number>`\n📝 Example: `/adhar 123456789012`')
         raise events.StopPropagation
 
     aadhar = match.group(1).strip()
     validated = validate_aadhar(aadhar)
 
     if not validated:
-        await event.respond('❌ Galat Aadhar number bhai!\n\n📌 Format: 12 digit hona chahiye')
+        await event.respond('❌ Invalid Aadhar number!\n\n📌 Format: Must be 12 digits')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, data fetch ho raha hai...')
+    processing_msg = await event.respond('⏳ Fetching data, please wait...')
     data, error = await call_tool_api('aadhar_info', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4067,31 +4120,31 @@ async def family_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('aadhar_family'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('👨‍👩‍👧‍👦 **Family Info Tool**\n\n🔹 Use kaise karein: `/family <aadhar_number>`\n📝 Example: `/family 123456789012`')
+        await event.respond('👨‍👩‍👧‍👦 **Family Info Tool**\n\n🔹 Usage: `/family <aadhar_number>`\n📝 Example: `/family 123456789012`')
         raise events.StopPropagation
 
     aadhar = match.group(1).strip()
     validated = validate_aadhar(aadhar)
 
     if not validated:
-        await event.respond('❌ Galat Aadhar number bhai!\n\n📌 Format: 12 digit hona chahiye')
+        await event.respond('❌ Invalid Aadhar number!\n\n📌 Format: Must be 12 digits')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, family data mil raha hai...')
+    processing_msg = await event.respond('⏳ Fetching family data, please wait...')
     data, error = await call_tool_api('aadhar_family', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4115,31 +4168,31 @@ async def vhe_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('vehicle_info'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('🚗 **Vehicle Info Tool**\n\n🔹 Use kaise karein: `/vhe <vehicle_number>`\n📝 Example: `/vhe MH12AB1234`')
+        await event.respond('🚗 **Vehicle Info Tool**\n\n🔹 Usage: `/vhe <vehicle_number>`\n📝 Example: `/vhe MH12AB1234`')
         raise events.StopPropagation
 
     vehicle = match.group(1).strip()
     validated = validate_vehicle(vehicle)
 
     if not validated:
-        await event.respond('❌ Galat vehicle number bhai!\n\n📌 Format: Indian Vehicle Number\n📝 Example: MH12AB1234')
+        await event.respond('❌ Invalid vehicle number!\n\n📌 Format: Indian Vehicle Number\n📝 Example: MH12AB1234')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, gaadi ka data aa raha hai...')
+    processing_msg = await event.respond('⏳ Fetching vehicle data, please wait...')
     data, error = await call_tool_api('vehicle_info', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4163,31 +4216,31 @@ async def ifsc_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('ifsc_info'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('🏦 **IFSC Code Tool**\n\n🔹 Use kaise karein: `/ifsc <ifsc_code>`\n📝 Example: `/ifsc SBIN0001234`')
+        await event.respond('🏦 **IFSC Code Tool**\n\n🔹 Usage: `/ifsc <ifsc_code>`\n📝 Example: `/ifsc SBIN0001234`')
         raise events.StopPropagation
 
     ifsc = match.group(1).strip()
     validated = validate_ifsc(ifsc)
 
     if not validated:
-        await event.respond('❌ Galat IFSC code bhai!\n\n📌 Format: 11 character hona chahiye\n📝 Example: SBIN0001234')
+        await event.respond('❌ Invalid IFSC code!\n\n📌 Format: Must be 11 characters\n📝 Example: SBIN0001234')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, bank details aa rahi hain...')
+    processing_msg = await event.respond('⏳ Fetching bank details, please wait...')
     data, error = await call_tool_api('ifsc_info', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4211,31 +4264,31 @@ async def pak_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('pak_num'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('🇵🇰 **Pakistan Number Tool**\n\n🔹 Use kaise karein: `/pak <pakistan_number>`\n📝 Example: `/pak 03001234567`')
+        await event.respond('🇵🇰 **Pakistan Number Tool**\n\n🔹 Usage: `/pak <pakistan_number>`\n📝 Example: `/pak 03001234567`')
         raise events.StopPropagation
 
     pak_num = match.group(1).strip()
     validated = validate_pak_number(pak_num)
 
     if not validated:
-        await event.respond('❌ Galat Pakistan number bhai!\n\n📌 Format: 10-11 digit hona chahiye\n📝 Example: 03001234567')
+        await event.respond('❌ Invalid Pakistan number!\n\n📌 Format: Must be 10-11 digits\n📝 Example: 03001234567')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, data fetch ho raha hai...')
+    processing_msg = await event.respond('⏳ Fetching data, please wait...')
     data, error = await call_tool_api('pak_num', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4259,31 +4312,31 @@ async def pin_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('pincode_info'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('📍 **PIN Code Tool**\n\n🔹 Use kaise karein: `/pin <pincode>`\n📝 Example: `/pin 400001`')
+        await event.respond('📍 **PIN Code Tool**\n\n🔹 Usage: `/pin <pincode>`\n📝 Example: `/pin 400001`')
         raise events.StopPropagation
 
     pincode = match.group(1).strip()
     validated = validate_pincode(pincode)
 
     if not validated:
-        await event.respond('❌ Galat PIN code bhai!\n\n📌 Format: 6 digit hona chahiye\n📝 Example: 400001')
+        await event.respond('❌ Invalid PIN code!\n\n📌 Format: Must be 6 digits\n📝 Example: 400001')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, location info aa rahi hai...')
+    processing_msg = await event.respond('⏳ Fetching location info, please wait...')
     data, error = await call_tool_api('pincode_info', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4307,31 +4360,31 @@ async def imei_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('imei_info'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('📱 **IMEI Info Tool**\n\n🔹 Use kaise karein: `/imei <imei_number>`\n📝 Example: `/imei 123456789012345`')
+        await event.respond('📱 **IMEI Info Tool**\n\n🔹 Usage: `/imei <imei_number>`\n📝 Example: `/imei 123456789012345`')
         raise events.StopPropagation
 
     imei = match.group(1).strip()
     validated = validate_imei(imei)
 
     if not validated:
-        await event.respond('❌ Galat IMEI number bhai!\n\n📌 Format: 15 digit hona chahiye\n📝 Example: 123456789012345')
+        await event.respond('❌ Invalid IMEI number!\n\n📌 Format: Must be 15 digits\n📝 Example: 123456789012345')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, device info aa rahi hai...')
+    processing_msg = await event.respond('⏳ Fetching device info, please wait...')
     data, error = await call_tool_api('imei_info', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4355,31 +4408,31 @@ async def ip_handler(event):
         raise events.StopPropagation
 
     if not get_tool_status('ip_info'):
-        await event.respond('🚫 Yeh tool abhi band hai bhai! ❌')
+        await event.respond('🚫 This tool is currently disabled! ❌')
         raise events.StopPropagation
 
     match = event.pattern_match
     if not match.group(1):
-        await event.respond('🌐 **IP Info Tool**\n\n🔹 Use kaise karein: `/ip <ip_address>`\n📝 Example: `/ip 8.8.8.8`')
+        await event.respond('🌐 **IP Info Tool**\n\n🔹 Usage: `/ip <ip_address>`\n📝 Example: `/ip 8.8.8.8`')
         raise events.StopPropagation
 
     ip = match.group(1).strip()
     validated = validate_ip(ip)
 
     if not validated:
-        await event.respond('❌ Galat IP address bhai!\n\n📌 Format: IPv4 ya IPv6 hona chahiye\n📝 Example: 8.8.8.8')
+        await event.respond('❌ Invalid IP address!\n\n📌 Format: Must be IPv4 or IPv6\n📝 Example: 8.8.8.8')
         raise events.StopPropagation
 
-    processing_msg = await event.respond('⏳ Ruko bhai, IP details aa rahi hain...')
+    processing_msg = await event.respond('⏳ Fetching IP details, please wait...')
     data, error = await call_tool_api('ip_info', validated)
 
     if data:
-        response = format_json_as_text(data)
+        response = format_json_as_text(data, query=validated)
         if len(response) > 4000:
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -4402,9 +4455,9 @@ async def help_handler(event):
         access_check = await check_user_access(sender.id)
         if not access_check['allowed']:
             if access_check['reason'] == 'banned':
-                await event.respond('🚫 Bhai tu BANNED hai is bot se! ❌')
+                await event.respond('🚫 You are BANNED from this bot! ❌')
             elif access_check['reason'] == 'not_subscribed':
-                msg = '⚠️ Pehle in channels ko join karo bhai!'
+                msg = '⚠️ Please join these channels first!'
                 buttons = []
                 for ch in access_check['channels']:
                     ch_username = ch['username']
@@ -4469,9 +4522,9 @@ async def hello_handler(event):
         access_check = await check_user_access(sender.id)
         if not access_check['allowed']:
             if access_check['reason'] == 'banned':
-                await event.respond('🚫 Bhai tu BANNED hai is bot se! ❌')
+                await event.respond('🚫 You are BANNED from this bot! ❌')
             elif access_check['reason'] == 'not_subscribed':
-                msg = '⚠️ Pehle in channels ko join karo bhai!'
+                msg = '⚠️ Please join these channels first!'
                 buttons = []
                 for ch in access_check['channels']:
                     ch_username = ch['username']
@@ -4500,9 +4553,9 @@ async def time_handler(event):
         access_check = await check_user_access(sender.id)
         if not access_check['allowed']:
             if access_check['reason'] == 'banned':
-                await event.respond('🚫 Bhai tu BANNED hai is bot se! ❌')
+                await event.respond('🚫 You are BANNED from this bot! ❌')
             elif access_check['reason'] == 'not_subscribed':
-                msg = '⚠️ Pehle in channels ko join karo bhai!'
+                msg = '⚠️ Please join these channels first!'
                 buttons = []
                 for ch in access_check['channels']:
                     ch_username = ch['username']
