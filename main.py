@@ -3563,8 +3563,8 @@ async def info_handler(event):
                     target_user_id = user['user_id']
                     break
         else:
-        await event.respond('❌ Invalid format!\n\n📌 Correct format: `/info <user_id>` or `/info @username` or reply to a message with `/info`')
-        raise events.StopPropagation
+            await event.respond('❌ Invalid format!\n\n📌 Correct format: `/info <user_id>` or `/info @username` or reply to a message with `/info`')
+            raise events.StopPropagation
     else:
         await event.respond('❌ No user specified!\n\n📌 Use: `/info <user_id>` or `/info @username` or reply to a message with `/info`')
         raise events.StopPropagation
