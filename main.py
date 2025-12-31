@@ -23,7 +23,7 @@ from database import (
     get_all_users, get_stats, increment_messages,
     set_setting, get_setting, add_channel, remove_channel,
     get_all_channels, channel_exists, add_group, remove_group,
-    get_all_groups, group_exists, is_group_active,
+    get_all_groups, group_exists, is_group_active, get_removed_groups, get_group_details, update_group_invite_link, increment_permission_warning,
     set_tool_status, get_tool_status, get_all_active_tools,
     get_tool_apis, add_tool_api, remove_tool_api,
     update_api_response_fields, get_api_response_fields,
@@ -896,11 +896,12 @@ async def callback_handler(event):
             await safe_answer(event, "Owner only!", alert=True)
             return
 
-    if data == b'owner_groups':
+    elif data == b'owner_groups':
         groups = get_all_groups()
         buttons = [
-            [Button.inline('➕ Add', b'group_add'), Button.inline('➖ Remove', b'group_remove')],
-            [Button.inline('📋 List', b'group_list_page_1'), Button.inline('👋 Welcome', b'group_welcome_text')],
+            [Button.inline('➕ Add', b'group_add'), Button.inline('❌ Remove', b'group_remove')],
+            [Button.inline('📋 List', b'group_list_page_1'), Button.inline('🗑️ Removed Groups', b'groups_removed_1')],
+            [Button.inline('👋 Welcome Msgs', b'group_welcome_text')],
             [Button.inline('🔙 Back', b'owner_back')],
         ]
         group_text = f"GROUPS\n\nConnected: {len(groups)}\n\nWhat do you want to do?"
@@ -1189,6 +1190,152 @@ async def callback_handler(event):
                 buttons.append([Button.inline(f'➡️ Next ({page}/{total_pages})', f'sub_force_list_page_{page+1}'.encode())])
             buttons.append([Button.inline('🔙 Back', b'setting_sub_force')])
             await event.edit(text, buttons=buttons)
+
+    elif data == b'owner_groups':
+        groups = get_all_groups()
+        buttons = [
+            [Button.inline('➕ Add', b'group_add'), Button.inline('❌ Remove', b'group_remove')],
+            [Button.inline('📋 List', b'group_list_page_1'), Button.inline('🗑️ Removed Groups', b'groups_removed_1')],
+            [Button.inline('👋 Welcome Msgs', b'group_welcome_text')],
+            [Button.inline('🔙 Back', b'owner_back')],
+        ]
+        group_text = f"GROUPS\n\nConnected: {len(groups)}\n\nWhat do you want to do?"
+        await event.edit(group_text, buttons=buttons)
+
+    elif data.startswith(b'groups_removed_'):
+        page = int(data.split(b'_')[2])
+        removed_groups = get_removed_groups()
+        if not removed_groups:
+            await event.edit('🚫 **Abhi tak koi removed group nahi hai!**', buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
+            return
+        
+        total_pages = (len(removed_groups) + 5) // 6
+        group_page_temp[sender.id] = page
+        start_idx = (page - 1) * 6
+        end_idx = min(start_idx + 6, len(removed_groups))
+        
+        buttons = []
+        for grp in removed_groups[start_idx:end_idx]:
+            buttons.append([Button.inline(f'🗑️ {grp["title"]}', f'show_removed_grp_{grp["group_id"]}'.encode())])
+        
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(Button.inline('⬅️ Previous', f'groups_removed_{page-1}'.encode()))
+        if page < total_pages:
+            nav_buttons.append(Button.inline('➡️ Next', f'groups_removed_{page+1}'.encode()))
+        if nav_buttons:
+            buttons.append(nav_buttons)
+            
+        buttons.append([Button.inline('🔙 Back', b'owner_groups')])
+        await event.edit(f'REMOVED GROUPS (Page {page}/{total_pages})', buttons=buttons)
+
+    elif data.startswith(b'show_removed_grp_'):
+        group_id = int(data.split(b'_')[3])
+        grp_info = get_group_details(group_id)
+        if grp_info:
+            info_text = f"🗑️ **REMOVED GROUP INFO**\n\n"
+            info_text += f"👥 **Name**: {grp_info['title']}\n"
+            info_text += f"🆔 **ID**: `{grp_info['group_id']}`\n"
+            info_text += f"📛 **Username**: @{grp_info['username']}\n"
+            info_text += f"📅 **Added On**: {grp_info['added_date'][:10]}\n"
+            info_text += f"👤 **Added By**: {grp_info['added_by_username'] or 'Unknown'} (`{grp_info['added_by_id'] or 'N/A'}`)\n"
+            info_text += f"🔒 **Type**: {'Private' if grp_info['is_private'] else 'Public'}\n"
+            
+            buttons = [
+                [Button.inline('🔄 Re-add', f'readd_confirm_{group_id}'.encode())],
+                [Button.inline('🔙 Back', b'groups_removed_1')]
+            ]
+            await event.edit(info_text, buttons=buttons)
+        else:
+            await safe_answer(event, "❌ Group details not found!", alert=True)
+
+    elif data.startswith(b'readd_confirm_'):
+        group_id = int(data.split(b'_')[2])
+        buttons = [
+            [Button.inline('✅ Yes, Re-add', f'readd_group_{group_id}'.encode()), Button.inline('❌ No', f'show_removed_grp_{group_id}'.encode())]
+        ]
+        await event.edit("⚠️ **Are you sure you want to re-add this group?**", buttons=buttons)
+
+    elif data.startswith(b'readd_group_'):
+        group_id = int(data.split(b'_')[2])
+        grp_info = get_group_details(group_id)
+        if grp_info:
+            add_group(grp_info['group_id'], grp_info['username'], grp_info['title'], grp_info['invite_link'], grp_info['added_by_id'], grp_info['added_by_username'], grp_info['is_private'])
+            try:
+                await client.send_message(group_id, f"Hello {grp_info['title']} ke members\nI'm back")
+            except Exception as e:
+                print(f"[LOG] Error sending I'm back message: {e}")
+            await event.edit(f"✅ Group **{grp_info['title']}** has been re-added!", buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
+
+    elif data.startswith(b'show_grp_'):
+        group_id = int(data.split(b'_')[2])
+        grp_info = get_group_details(group_id)
+        if grp_info:
+            # Check permissions
+            bot_me = await client.get_me()
+            perms_text = ""
+            perms = None
+            try:
+                perms = await client.get_permissions(group_id, bot_me.id)
+                perms_text += f"{'🟢' if perms.is_admin else '🔴'} Manage Group\n"
+                perms_text += f"{'🟢' if perms.delete_messages else '🔴'} Delete Messages\n"
+                perms_text += f"{'🟢' if perms.ban_users else '🔴'} Ban Users\n"
+                perms_text += f"{'🟢' if perms.invite_users else '🔴'} Invite Users\n"
+            except:
+                perms_text = "Could not fetch permissions (Bot might not be in group)"
+
+            info_text = f"👥 **GROUP DETAILS**\n\n"
+            info_text += f"Name: {grp_info['title']}\n"
+            info_text += f"ID: `{grp_info['group_id']}`\n"
+            info_text += f"Username: @{grp_info['username']}\n"
+            info_text += f"Added: {grp_info['added_date'][:10]}\n"
+            info_text += f"Type: {'Private' if grp_info['is_private'] else 'Public'}\n"
+            info_text += f"Added By: {grp_info['added_by_username'] or 'Unknown'}\n\n"
+            info_text += f"🛡️ **Permissions:**\n{perms_text}"
+            
+            buttons = [
+                [Button.inline('🗑️ Remove', f'remove_grp_{group_id}'), Button.inline('🔄 Revoke Link', f'revoke_link_{group_id}')],
+                [Button.inline('🔑 Required Permission', f'req_perm_{group_id}')],
+                [Button.inline('🔙 Back', b'group_list_page_1')]
+            ]
+            await event.edit(info_text, buttons=buttons)
+
+    elif data.startswith(b'revoke_link_'):
+        group_id = int(data.split(b'_')[2])
+        try:
+            from telethon.tl.functions.messages import ExportChatInviteRequest
+            new_invite = await client(ExportChatInviteRequest(group_id))
+            update_group_invite_link(group_id, new_invite.link)
+            await safe_answer(event, "✅ Invite link revoked and updated!", alert=True)
+            # Refresh view
+            await event.click(f'show_grp_{group_id}')
+        except Exception as e:
+            await safe_answer(event, f"❌ Error: {str(e)}", alert=True)
+
+    elif data.startswith(b'req_perm_'):
+        group_id = int(data.split(b'_')[2])
+        bot_me = await client.get_me()
+        try:
+            perms = await client.get_permissions(group_id, bot_me.id)
+            msg = "📢 **Permission Request**\n\nMujhe ye permission chahiye please give me this permission:\n\n"
+            msg += f"1. Manage group (required) {'🟢' if perms.is_admin else '🔴'}\n"
+            msg += f"2. Delete msg (optional) {'🟢' if perms.delete_messages else '🔴'}\n"
+            msg += f"3. Ban users (optional) {'🟢' if perms.ban_users else '🔴'}\n"
+            msg += f"4. Invite users (required) {'🟢' if perms.invite_users else '🔴'}"
+            
+            await client.send_message(group_id, msg)
+            await safe_answer(event, "✅ Permission request sent to group!", alert=True)
+            
+            # Logic for warning system
+            if not perms.is_admin or not perms.invite_users:
+                warnings = increment_permission_warning(group_id)
+                if warnings >= 5:
+                    await client.send_message(group_id, "🚫 Required permission na hone ki vjha se group remove hogya hai")
+                    remove_group(group_id)
+                    await client.kick_participant(group_id, 'me')
+                    await event.edit("🚫 Group removed due to 5 permission warnings!", buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
+        except Exception as e:
+            await safe_answer(event, f"❌ Error: {str(e)}", alert=True)
 
     elif data == b'owner_settings':
         buttons = [
@@ -2917,6 +3064,9 @@ async def member_joined_handler(event):
                 grp_name = chat.username or str(chat.id)
                 grp_title = chat.title or 'Unknown Group'
                 invite_link = None
+                is_private = 1 if not chat.username else 0
+                added_by_id = sender.id
+                added_by_username = sender.username or sender.first_name or "Unknown"
                 
                 # Try to get invite link for private groups
                 if not chat.username:
@@ -2931,12 +3081,12 @@ async def member_joined_handler(event):
                 # Auto-add group when bot is directly added
                 was_new = False
                 if not group_exists(grp_id):
-                    add_group(grp_id, grp_name, grp_title, invite_link)
+                    add_group(grp_id, grp_name, grp_title, invite_link, added_by_id, added_by_username, is_private)
                     print(f"[LOG] 🤖 Bot added to new group '{grp_title}' - Auto-added to database")
                     was_new = True
                 else:
                     # Group exists but might be inactive - reactivate it
-                    add_group(grp_id, grp_name, grp_title, invite_link)
+                    add_group(grp_id, grp_name, grp_title, invite_link, added_by_id, added_by_username, is_private)
                     print(f"[LOG] 🤖 Bot re-added to group '{grp_title}' - Reactivated in database")
                 
                 # Send thank you message and auto-delete after 10 seconds

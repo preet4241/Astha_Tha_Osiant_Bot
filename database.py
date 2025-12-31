@@ -43,7 +43,11 @@ def init_db():
             group_title TEXT,
             added_date TEXT,
             is_active INTEGER DEFAULT 1,
-            invite_link TEXT
+            invite_link TEXT,
+            added_by_id INTEGER,
+            added_by_username TEXT,
+            is_private INTEGER DEFAULT 1,
+            permission_warnings INTEGER DEFAULT 0
         )
     ''')
 
@@ -62,12 +66,24 @@ def init_db():
     except Exception as e:
         print(f"[DB] Migration notice: {e}")
     
-    # Migrate existing groups table to add invite_link if missing
+    # Migrate existing groups table to add missing columns
     try:
         cursor.execute("PRAGMA table_info(groups)")
         columns = [col[1] for col in cursor.fetchall()]
         if 'invite_link' not in columns:
             cursor.execute('ALTER TABLE groups ADD COLUMN invite_link TEXT')
+            conn.commit()
+        if 'added_by_id' not in columns:
+            cursor.execute('ALTER TABLE groups ADD COLUMN added_by_id INTEGER')
+            conn.commit()
+        if 'added_by_username' not in columns:
+            cursor.execute('ALTER TABLE groups ADD COLUMN added_by_username TEXT')
+            conn.commit()
+        if 'is_private' not in columns:
+            cursor.execute('ALTER TABLE groups ADD COLUMN is_private INTEGER DEFAULT 1')
+            conn.commit()
+        if 'permission_warnings' not in columns:
+            cursor.execute('ALTER TABLE groups ADD COLUMN permission_warnings INTEGER DEFAULT 0')
             conn.commit()
     except Exception as e:
         print(f"[DB] Migration notice: {e}")
@@ -485,44 +501,30 @@ def check_channel_limits():
     conn.commit()
     conn.close()
 
-def add_group(group_id, group_username, group_title, invite_link=None):
+def add_group(group_id, group_username, group_title, invite_link=None, added_by_id=None, added_by_username=None, is_private=1):
     """Add group or reactivate if already exists"""
     init_db()
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
     try:
-        # Try to add invite_link column if it doesn't exist
-        try:
-            cursor.execute('ALTER TABLE groups ADD COLUMN invite_link TEXT')
-            conn.commit()
-        except:
-            pass
-
         # Check if group exists (even if inactive)
         cursor.execute('SELECT is_active FROM groups WHERE group_id = ?', (group_id,))
         existing = cursor.fetchone()
 
         if existing:
             # Group exists, reactivate it
-            if invite_link:
-                cursor.execute('''
-                    UPDATE groups 
-                    SET is_active = 1, group_username = ?, group_title = ?, added_date = ?, invite_link = ?
-                    WHERE group_id = ?
-                ''', (group_username, group_title, datetime.now().isoformat(), invite_link, group_id))
-            else:
-                cursor.execute('''
-                    UPDATE groups 
-                    SET is_active = 1, group_username = ?, group_title = ?, added_date = ?
-                    WHERE group_id = ?
-                ''', (group_username, group_title, datetime.now().isoformat(), group_id))
+            cursor.execute('''
+                UPDATE groups 
+                SET is_active = 1, group_username = ?, group_title = ?, added_date = ?, invite_link = ?, added_by_id = ?, added_by_username = ?, is_private = ?, permission_warnings = 0
+                WHERE group_id = ?
+            ''', (group_username, group_title, datetime.now().isoformat(), invite_link, added_by_id, added_by_username, is_private, group_id))
         else:
             # New group, insert it
             cursor.execute('''
-                INSERT INTO groups (group_id, group_username, group_title, added_date, is_active, invite_link)
-                VALUES (?, ?, ?, ?, 1, ?)
-            ''', (group_id, group_username, group_title, datetime.now().isoformat(), invite_link))
+                INSERT INTO groups (group_id, group_username, group_title, added_date, is_active, invite_link, added_by_id, added_by_username, is_private)
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+            ''', (group_id, group_username, group_title, datetime.now().isoformat(), invite_link, added_by_id, added_by_username, is_private))
 
         conn.commit()
         result = True
@@ -533,6 +535,73 @@ def add_group(group_id, group_username, group_title, invite_link=None):
         conn.close()
 
     return result
+
+def get_removed_groups():
+    """Get all inactive groups"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT group_id, group_username, group_title, added_date, invite_link, added_by_id, added_by_username, is_private FROM groups WHERE is_active = 0 ORDER BY added_date DESC')
+    groups = cursor.fetchall()
+    conn.close()
+    result = []
+    for grp in groups:
+        result.append({
+            'group_id': grp[0],
+            'username': grp[1],
+            'title': grp[2],
+            'added_date': grp[3],
+            'invite_link': grp[4],
+            'added_by_id': grp[5],
+            'added_by_username': grp[6],
+            'is_private': grp[7]
+        })
+    return result
+
+def increment_permission_warning(group_id):
+    """Increment permission warning count for a group"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE groups SET permission_warnings = permission_warnings + 1 WHERE group_id = ?', (group_id,))
+    cursor.execute('SELECT permission_warnings FROM groups WHERE group_id = ?', (group_id,))
+    count = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return count
+
+def get_group_details(group_id):
+    """Get group details from database"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT group_id, group_username, group_title, added_date, invite_link, is_active, added_by_id, added_by_username, is_private, permission_warnings FROM groups WHERE group_id = ?', (group_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {
+            'group_id': row[0],
+            'username': row[1],
+            'title': row[2],
+            'added_date': row[3],
+            'invite_link': row[4],
+            'is_active': row[5],
+            'added_by_id': row[6],
+            'added_by_username': row[7],
+            'is_private': row[8],
+            'permission_warnings': row[9]
+        }
+    return None
+
+def update_group_invite_link(group_id, invite_link):
+    """Update invite link for a group"""
+    init_db()
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE groups SET invite_link = ? WHERE group_id = ?', (invite_link, group_id))
+    conn.commit()
+    conn.close()
+    return True
 
 def remove_group(group_id):
     """Mark group as removed (deactivate, don't delete)"""
