@@ -2164,7 +2164,7 @@ async def callback_handler(event):
     elif data == b'owner_back':
         buttons = [
             [Button.inline('🛠️ Tools', b'owner_tools')],
-            [Button.inline('👥 Users', b'owner_users'), Button.inline('📢 Broadcast', b'owner_broadcast')],
+            [Button.inline('👥 Users', b'owner_users'), Button.inline('✉️ Send Messages', b'owner_broadcast')],
             [Button.inline('📊 Status', b'owner_status'), Button.inline('⚙️ Settings', b'owner_settings')],
         ]
         stats = get_stats()
@@ -2196,10 +2196,13 @@ async def callback_handler(event):
         await event.edit('ℹ️ USER INFO\n\nEnter user ID or username (@username):', buttons=buttons)
 
     elif data == b'owner_broadcast':
-        broadcast_temp[sender.id] = True
-        buttons = [[Button.inline('❌ Cancel', b'owner_back')]]
-        help_text = "Type your broadcast message:\n\nAvailable Placeholders:\n{greeting} - Good Morning/Afternoon/Evening/Night\n{first_name} - User's first name\n{username} - User's username\n{user_id} - User's ID\n{total_users} - Total users count\n{active_users} - Active users count\n{date} - Today's date (DD-MM-YYYY)\n{time} - Current time (HH:MM:SS)\n{datetime} - Full date and time\n{bot_name} - Bot name"
-        await event.edit(help_text, buttons=buttons)
+        buttons = [
+            [Button.inline('🤖 Bot Only', b'msg_bot_only'), Button.inline('👥 Group Only', b'msg_group_only')],
+            [Button.inline('👤 Personally', b'msg_personally'), Button.inline('📢 Broadcast', b'msg_broadcast')],
+            [Button.inline('📡 Ping', b'msg_ping')],
+            [Button.inline('👈 Back', b'owner_back')]
+        ]
+        await event.edit('✉️ **SEND MESSAGES**\n\nChoose where you want to send the message:', buttons=buttons)
 
     elif data == b'owner_status':
         stats = get_stats()
