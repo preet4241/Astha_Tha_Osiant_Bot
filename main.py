@@ -689,6 +689,102 @@ def get_random_welcome_message(username, group_name):
     selected = random.choice(messages)
     return selected.format(username=username, group_name=group_name)
 
+async def smart_broadcast_logic(owner_id, event, mode, target_user_id=None):
+    targets = []
+    if mode == 'bot':
+        targets = [{'id': u['user_id'], 'type': 'user', 'data': u} for u in get_all_users().values() if not u.get('banned')]
+    elif mode == 'group':
+        targets = [{'id': g['group_id'], 'type': 'group', 'data': g} for g in get_all_groups()]
+    elif mode == 'all':
+        targets = [{'id': u['user_id'], 'type': 'user', 'data': u} for u in get_all_users().values() if not u.get('banned')]
+        targets.extend([{'id': g['group_id'], 'type': 'group', 'data': g} for g in get_all_groups()])
+    elif mode == 'personally':
+        user_data = get_user(target_user_id)
+        targets = [{'id': target_user_id, 'type': 'user', 'data': user_data}]
+
+    sent, failed = 0, 0
+    sent_list, failed_list = [], []
+    stats = get_stats()
+    
+    status_msg = await client.send_message(owner_id, f"🚀 Starting {mode} broadcast to {len(targets)} targets...")
+    
+    for i, target in enumerate(targets):
+        try:
+            msg_to_send = event.message
+            # Apply placeholders if it's a text message or has a caption
+            if target['type'] == 'user' and target['data']:
+                user_data = target['data']
+                # Create a pseudo-sender object for format_text
+                class PseudoSender:
+                    def __init__(self, d):
+                        self.id = d.get('user_id')
+                        self.first_name = d.get('first_name')
+                        self.username = d.get('username')
+                
+                pseudo_sender = PseudoSender(user_data)
+                
+                if msg_to_send.text:
+                    try:
+                        msg_to_send.text = format_text(msg_to_send.text, pseudo_sender, stats, user_data)
+                    except: pass
+                if hasattr(msg_to_send, 'caption') and msg_to_send.caption:
+                    try:
+                        msg_to_send.caption = format_text(msg_to_send.caption, pseudo_sender, stats, user_data)
+                    except: pass
+
+            await client.send_message(target['id'], msg_to_send)
+            sent += 1
+            name = target['data'].get('first_name') or target['data'].get('title') or "Unknown"
+            sent_list.append(f"SUCCESS | {target['type'].upper()} | {target['id']} | {name}")
+            
+            if target['type'] == 'group':
+                await asyncio.sleep(1)
+            else:
+                await asyncio.sleep(0.05)
+                
+            if i % 10 == 0:
+                await status_msg.edit(f"⏳ Broadcasting... {sent}/{len(targets)} sent")
+        except Exception as e:
+            failed += 1
+            failed_list.append(f"FAILED | {target['type'].upper()} | {target['id']} | Error: {str(e)}")
+            await asyncio.sleep(0.1)
+
+    broadcast_stats[owner_id] = {'sent': sent_list, 'failed': failed_list, 'sent_count': sent, 'failed_count': failed}
+    await status_msg.edit(f"✅ Broadcast Complete!\n\nSent: {sent}\nFailed: {failed}", buttons=[[Button.inline('📋 Detail', b'broadcast_detail'), Button.inline('🔙 Back', b'owner_broadcast')]])
+
+async def run_ping_broadcast(owner_id):
+    all_users = list(get_all_users().values())
+    active, inactive = 0, 0
+    report = []
+    
+    status_msg = await client.send_message(owner_id, f"📡 Pinging {len(all_users)} users...")
+    
+    for user in all_users:
+        if user.get('banned'): continue
+        try:
+            msg = await client.send_message(user['user_id'], "📡 **Ping!** (Auto-deleting...)")
+            await msg.delete()
+            active += 1
+            report.append(f"ACTIVE | {user['user_id']} | @{user.get('username', 'N/A')}")
+        except:
+            inactive += 1
+            report.append(f"INACTIVE | {user['user_id']} | @{user.get('username', 'N/A')}")
+        await asyncio.sleep(0.05)
+
+    filename = f"ping_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(filename, 'w') as f:
+        f.write(f"📊 PING REPORT - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"━━━━━━━━━━━━━━━━━━━━━\n")
+        f.write(f"Total Checked: {len(all_users)}\n")
+        f.write(f"Active Users: {active}\n")
+        f.write(f"Inactive Users: {inactive}\n")
+        f.write(f"━━━━━━━━━━━━━━━━━━━━━\n\n")
+        f.write("\n".join(report))
+    
+    await client.send_file(owner_id, filename, caption=f"📡 **Ping Report**\n\n✅ Active: {active}\n❌ Inactive: {inactive}\nTotal: {len(all_users)}")
+    await status_msg.delete()
+    if os.path.exists(filename): os.remove(filename)
+
 def format_text(text, sender, stats, user=None):
     current_date = datetime.now().strftime("%d-%m-%Y")
     current_time = datetime.now().strftime("%H:%M:%S")
@@ -4896,73 +4992,3 @@ if __name__ == '__main__':
     print("Flask server started on port 5000")
     run_bot()
 
-async def smart_broadcast_logic(owner_id, event, mode, target_user_id=None):
-    targets = []
-    if mode == 'bot':
-        targets = [{'id': u['user_id'], 'type': 'user'} for u in get_all_users().values() if not u.get('banned')]
-    elif mode == 'group':
-        targets = [{'id': g['group_id'], 'type': 'group'} for g in get_all_groups()]
-    elif mode == 'all':
-        targets = [{'id': u['user_id'], 'type': 'user'} for u in get_all_users().values() if not u.get('banned')]
-        targets.extend([{'id': g['group_id'], 'type': 'group'} for g in get_all_groups()])
-    elif mode == 'personally':
-        targets = [{'id': target_user_id, 'type': 'user'}]
-
-    sent, failed = 0, 0
-    sent_list, failed_list = [], []
-    
-    status_msg = await client.send_message(owner_id, f"🚀 Starting {mode} broadcast to {len(targets)} targets...")
-    
-    for i, target in enumerate(targets):
-        try:
-            await client.send_message(target['id'], event.message)
-            sent += 1
-            sent_list.append(f"SUCCESS | {target['type'].upper()} | {target['id']}")
-            
-            if target['type'] == 'group':
-                await asyncio.sleep(1)
-            else:
-                await asyncio.sleep(0.05)
-                
-            if i % 10 == 0:
-                await status_msg.edit(f"⏳ Broadcasting... {sent}/{len(targets)} sent")
-        except Exception as e:
-            failed += 1
-            failed_list.append(f"FAILED | {target['type'].upper()} | {target['id']} | Error: {str(e)}")
-            await asyncio.sleep(0.1)
-
-    broadcast_stats[owner_id] = {'sent': sent_list, 'failed': failed_list, 'sent_count': sent, 'failed_count': failed}
-    await status_msg.edit(f"✅ Broadcast Complete!\n\nSent: {sent}\nFailed: {failed}", buttons=[[Button.inline('📋 Detail', b'broadcast_detail'), Button.inline('🔙 Back', b'owner_broadcast')]])
-
-async def run_ping_broadcast(owner_id):
-    all_users = list(get_all_users().values())
-    active, inactive = 0, 0
-    report = []
-    
-    status_msg = await client.send_message(owner_id, f"📡 Pinging {len(all_users)} users...")
-    
-    for user in all_users:
-        if user.get('banned'): continue
-        try:
-            msg = await client.send_message(user['user_id'], "📡 **Ping!** (Auto-deleting...)")
-            await msg.delete()
-            active += 1
-            report.append(f"ACTIVE | {user['user_id']} | @{user.get('username', 'N/A')}")
-        except:
-            inactive += 1
-            report.append(f"INACTIVE | {user['user_id']} | @{user.get('username', 'N/A')}")
-        await asyncio.sleep(0.05)
-
-    filename = f"ping_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-    with open(filename, 'w') as f:
-        f.write(f"📊 PING REPORT - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"━━━━━━━━━━━━━━━━━━━━━\n")
-        f.write(f"Total Checked: {len(all_users)}\n")
-        f.write(f"Active Users: {active}\n")
-        f.write(f"Inactive Users: {inactive}\n")
-        f.write(f"━━━━━━━━━━━━━━━━━━━━━\n\n")
-        f.write("\n".join(report))
-    
-    await client.send_file(owner_id, filename, caption=f"📡 **Ping Report**\n\n✅ Active: {active}\n❌ Inactive: {inactive}\nTotal: {len(all_users)}")
-    await status_msg.delete()
-    if os.path.exists(filename): os.remove(filename)
