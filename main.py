@@ -2380,13 +2380,25 @@ async def callback_handler(event):
         user_text = format_text(custom_text, sender, stats, user_data)
         await event.edit(user_text, buttons=buttons)
 
-    elif data.startswith(b'use_'):
-        tool_key = data.decode().replace('use_', '')
-        if tool_key in TOOL_CONFIG:
-            tool_session[sender.id] = tool_key
-            back_btn = b'owner_tools' if sender.id == owner_id else b'user_tools'
-            buttons = [[Button.inline('❌ Cancel', back_btn)]]
-            await event.edit(TOOL_CONFIG[tool_key]['prompt'], buttons=buttons)
+    elif data == b'msg_bot_only':
+        broadcast_temp[sender.id] = 'bot'
+        await event.edit('🤖 **BOT ONLY BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all bot users:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+
+    elif data == b'msg_group_only':
+        broadcast_temp[sender.id] = 'group'
+        await event.edit('👥 **GROUP ONLY BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all connected groups:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+
+    elif data == b'msg_broadcast':
+        broadcast_temp[sender.id] = 'all'
+        await event.edit('📢 **FULL BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all users and groups:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+
+    elif data == b'msg_personally':
+        user_action_type[sender.id] = 'personal_msg_user'
+        await event.edit('👤 **PERSONAL MESSAGE**\n\nEnter User ID or Username of the target user:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+
+    elif data == b'msg_ping':
+        await event.answer('📡 Starting Ping...', alert=False)
+        asyncio.create_task(run_ping_broadcast(sender.id))
 
     elif data == b'broadcast_detail':
         stats = broadcast_stats.get(sender.id)
@@ -2881,6 +2893,45 @@ Or type **"skip"** to show full response.'''
                 await event.respond(f'✅ Group added successfully!\n\n👥 {grp_title}\nID: {grp_id}\n@{grp_name}', buttons=buttons)
         raise events.StopPropagation
 
+    # Handle broadcast/personal message content
+    if broadcast_temp.get(sender.id):
+        mode = broadcast_temp[sender.id]
+        broadcast_temp[sender.id] = False
+        target_user_id = None
+        
+        if mode == 'personally':
+            target_user_id = user_action_temp.get(sender.id)
+            user_action_temp[sender.id] = None
+        
+        asyncio.create_task(smart_broadcast_logic(sender.id, event, mode, target_user_id))
+        raise events.StopPropagation
+
+    # Handle personal message user lookup
+    if user_action_type.get(sender.id) == 'personal_msg_user':
+        user_input = event.text.strip()
+        target_user = None
+        if user_input.isdigit():
+            target_user = get_user(int(user_input))
+        elif user_input.startswith('@'):
+            username = user_input[1:].lower()
+            all_users = get_all_users()
+            for u in all_users.values():
+                if u.get('username', '').lower() == username:
+                    target_user = u
+                    break
+        
+        if not target_user:
+            await event.respond('❌ User not found in database!', buttons=[[Button.inline('🔙 Back', b'owner_broadcast')]])
+        else:
+            user_action_temp[sender.id] = target_user['user_id']
+            broadcast_temp[sender.id] = 'personally'
+            details = f"👤 **Target User Found**\n\nName: {target_user['first_name']}\nID: {target_user['user_id']}\nUsername: @{target_user.get('username', 'N/A')}\n\nNow send the message (Text/Photo/Video/File) to send to this user:"
+            await event.respond(details, buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+        
+        user_action_type[sender.id] = None
+        raise events.StopPropagation
+
+    # Original user action handler
     if user_action_type.get(sender.id):
         action = user_action_type[sender.id]
         user_input = event.text.strip()
@@ -4844,3 +4895,74 @@ if __name__ == '__main__':
     flask_thread.start()
     print("Flask server started on port 5000")
     run_bot()
+
+async def smart_broadcast_logic(owner_id, event, mode, target_user_id=None):
+    targets = []
+    if mode == 'bot':
+        targets = [{'id': u['user_id'], 'type': 'user'} for u in get_all_users().values() if not u.get('banned')]
+    elif mode == 'group':
+        targets = [{'id': g['group_id'], 'type': 'group'} for g in get_all_groups()]
+    elif mode == 'all':
+        targets = [{'id': u['user_id'], 'type': 'user'} for u in get_all_users().values() if not u.get('banned')]
+        targets.extend([{'id': g['group_id'], 'type': 'group'} for g in get_all_groups()])
+    elif mode == 'personally':
+        targets = [{'id': target_user_id, 'type': 'user'}]
+
+    sent, failed = 0, 0
+    sent_list, failed_list = [], []
+    
+    status_msg = await client.send_message(owner_id, f"🚀 Starting {mode} broadcast to {len(targets)} targets...")
+    
+    for i, target in enumerate(targets):
+        try:
+            await client.send_message(target['id'], event.message)
+            sent += 1
+            sent_list.append(f"SUCCESS | {target['type'].upper()} | {target['id']}")
+            
+            if target['type'] == 'group':
+                await asyncio.sleep(1)
+            else:
+                await asyncio.sleep(0.05)
+                
+            if i % 10 == 0:
+                await status_msg.edit(f"⏳ Broadcasting... {sent}/{len(targets)} sent")
+        except Exception as e:
+            failed += 1
+            failed_list.append(f"FAILED | {target['type'].upper()} | {target['id']} | Error: {str(e)}")
+            await asyncio.sleep(0.1)
+
+    broadcast_stats[owner_id] = {'sent': sent_list, 'failed': failed_list, 'sent_count': sent, 'failed_count': failed}
+    await status_msg.edit(f"✅ Broadcast Complete!\n\nSent: {sent}\nFailed: {failed}", buttons=[[Button.inline('📋 Detail', b'broadcast_detail'), Button.inline('🔙 Back', b'owner_broadcast')]])
+
+async def run_ping_broadcast(owner_id):
+    all_users = list(get_all_users().values())
+    active, inactive = 0, 0
+    report = []
+    
+    status_msg = await client.send_message(owner_id, f"📡 Pinging {len(all_users)} users...")
+    
+    for user in all_users:
+        if user.get('banned'): continue
+        try:
+            msg = await client.send_message(user['user_id'], "📡 **Ping!** (Auto-deleting...)")
+            await msg.delete()
+            active += 1
+            report.append(f"ACTIVE | {user['user_id']} | @{user.get('username', 'N/A')}")
+        except:
+            inactive += 1
+            report.append(f"INACTIVE | {user['user_id']} | @{user.get('username', 'N/A')}")
+        await asyncio.sleep(0.05)
+
+    filename = f"ping_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(filename, 'w') as f:
+        f.write(f"📊 PING REPORT - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"━━━━━━━━━━━━━━━━━━━━━\n")
+        f.write(f"Total Checked: {len(all_users)}\n")
+        f.write(f"Active Users: {active}\n")
+        f.write(f"Inactive Users: {inactive}\n")
+        f.write(f"━━━━━━━━━━━━━━━━━━━━━\n\n")
+        f.write("\n".join(report))
+    
+    await client.send_file(owner_id, filename, caption=f"📡 **Ping Report**\n\n✅ Active: {active}\n❌ Inactive: {inactive}\nTotal: {len(all_users)}")
+    await status_msg.delete()
+    if os.path.exists(filename): os.remove(filename)
