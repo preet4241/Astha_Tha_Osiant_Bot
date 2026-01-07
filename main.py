@@ -3455,21 +3455,16 @@ async def member_joined_handler(event):
 @client.on(events.NewMessage(incoming=True))
 async def group_message_handler(event):
     try:
+        # Check 1-minute timeout
+        if not await check_message_timeout(event):
+            return
+
         if not event.is_group:
             return
             
         chat = await event.get_chat()
         grp_id = chat.id
-
-        # Isolate group/private chats: Each (chat_id, user_id) has its own state
-    chat_id = event.chat_id
-    user_id = event.sender_id
-    
-    # Check 1-minute timeout
-    if not await check_message_timeout(event):
-        return
-
-    sender = await event.get_sender()
+        sender = await event.get_sender()
 
         if not sender or not chat:
             return
