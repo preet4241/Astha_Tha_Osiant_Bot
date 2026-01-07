@@ -53,6 +53,7 @@ tool_api_action = {}
 backup_channel_temp = {}
 api_field_mapping_temp = {}  # Store pending API field mappings: {user_id: {'api_id': id, 'tool_name': name, 'step': 'fields'}}
 panel_owner = {}  # Track which user owns which panel message: {(chat_id, msg_id): user_id}
+broadcast_start_times = {} # Track broadcast start times for timeout
 group_commands = {}  # Track ongoing group commands: {chat_id: {user_id: command_info}}
 chat_tool_session = {}  # Scoped tool sessions: {(chat_id, user_id): tool_name}
 last_interaction_time = {}  # Track last message time: {(chat_id, user_id): datetime}
@@ -2555,7 +2556,7 @@ async def callback_handler(event):
 
     elif data == b'msg_personally':
         user_action_type[sender.id] = 'personal_msg_user'
-        broadcast_start_times[sender.id] = datetime.now()
+        # No timeout here yet, timeout starts after user is found
         await event.edit('👤 **PERSONAL MESSAGE**\n\nEnter User ID or Username of the target user:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
 
     elif data == b'msg_ping':
@@ -3113,7 +3114,8 @@ Or type **"skip"** to show full response.'''
         else:
             user_action_temp[sender.id] = target_user['user_id']
             broadcast_temp[sender.id] = 'personally'
-            details = f"👤 **Target User Found**\n\nName: {target_user['first_name']}\nID: {target_user['user_id']}\nUsername: @{target_user.get('username', 'N/A')}\n\nNow send the message (Text/Photo/Video/File) to send to this user:"
+            broadcast_start_times[sender.id] = datetime.now()
+            details = f"👤 **Target User Found**\n\nName: {target_user['first_name']}\nID: {target_user['user_id']}\nUsername: @{target_user.get('username', 'N/A')}\n\nNow send the message (Text/Photo/Video/File) to send to this user:\n\n⏳ **Note:** You have 60 seconds to send the message."
             await event.respond(details, buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
         
         user_action_type[sender.id] = None
