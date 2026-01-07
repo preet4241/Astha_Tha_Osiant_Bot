@@ -691,35 +691,24 @@ def get_random_welcome_message(username, group_name):
     return selected.format(username=username, group_name=group_name)
 
 async def smart_broadcast_logic(owner_id, event, mode, target_user_id=None):
-    """Broadcast logic with 1-minute timeout"""
+    """Broadcast logic: Handles message input with 1-minute timeout"""
     try:
         # Check if this is a broadcast operation
-        is_broadcast = mode in ['bot', 'group', 'all', 'personally']
+        if mode not in ['bot', 'group', 'all', 'personally']:
+            return
+            
+        # We are already in the "waiting for message" state (broadcast_temp[sender.id] was set)
+        # The user has 60 seconds to SEND the message to the bot
+        # This function is called AFTER the message is received, but the design 
+        # needs to handle the WAITING period.
         
-        if is_broadcast:
-            # Start the broadcast task
-            broadcast_task = asyncio.create_task(actual_broadcast_logic(owner_id, event, mode, target_user_id))
-            
-            # Notify user
-            await client.send_message(owner_id, "📢 Broadcast started! It will automatically stop after 60 seconds if not completed.")
-            
-            try:
-                # Wait for task completion or timeout
-                await asyncio.wait_for(broadcast_task, timeout=60.0)
-            except asyncio.TimeoutError:
-                # Cancel the task if it takes more than 60s
-                broadcast_task.cancel()
-                await client.send_message(owner_id, "⏳ Broadcast Timeout! 60 seconds limit reached.")
-                print(f"[LOG] ⚠️ Broadcast timed out for owner {owner_id}")
-        else:
-            # Normal logic for non-broadcast (though smart_broadcast_logic is usually only for broadcast)
-            await actual_broadcast_logic(owner_id, event, mode, target_user_id)
+        # Let's refine the logic to start the broadcast immediately since we HAVE the message
+        await actual_broadcast_logic(owner_id, event, mode, target_user_id)
             
     except Exception as e:
         print(f"[LOG] ❌ Error in smart_broadcast_logic: {e}")
 
 async def actual_broadcast_logic(owner_id, event, mode, target_user_id=None):
-    pass
     targets = []
     if mode == 'bot':
         targets = [{'id': u['user_id'], 'type': 'user', 'data': u} for u in get_all_users().values() if not u.get('banned')]
@@ -2551,18 +2540,22 @@ async def callback_handler(event):
 
     elif data == b'msg_bot_only':
         broadcast_temp[sender.id] = 'bot'
-        await event.edit('🤖 **BOT ONLY BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all bot users:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+        broadcast_start_times[sender.id] = datetime.now()
+        await event.edit('🤖 **BOT ONLY BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all bot users:\n\n⏳ **Note:** You have 60 seconds to send the message.', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
 
     elif data == b'msg_group_only':
         broadcast_temp[sender.id] = 'group'
-        await event.edit('👥 **GROUP ONLY BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all connected groups:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+        broadcast_start_times[sender.id] = datetime.now()
+        await event.edit('👥 **GROUP ONLY BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all connected groups:\n\n⏳ **Note:** You have 60 seconds to send the message.', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
 
     elif data == b'msg_broadcast':
         broadcast_temp[sender.id] = 'all'
-        await event.edit('📢 **FULL BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all users and groups:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
+        broadcast_start_times[sender.id] = datetime.now()
+        await event.edit('📢 **FULL BROADCAST**\n\nSend the message (Text/Photo/Video/File) you want to send to all users and groups:\n\n⏳ **Note:** You have 60 seconds to send the message.', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
 
     elif data == b'msg_personally':
         user_action_type[sender.id] = 'personal_msg_user'
+        broadcast_start_times[sender.id] = datetime.now()
         await event.edit('👤 **PERSONAL MESSAGE**\n\nEnter User ID or Username of the target user:', buttons=[[Button.inline('❌ Cancel', b'owner_broadcast')]])
 
     elif data == b'msg_ping':
@@ -3076,7 +3069,22 @@ Or type **"skip"** to show full response.'''
     # Handle broadcast/personal message content
     if broadcast_temp.get(sender.id):
         mode = broadcast_temp[sender.id]
+        
+        # Check if user took too long to send the message (60s timeout)
+        start_time = broadcast_start_times.get(sender.id)
+        if start_time:
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed > 60:
+                broadcast_temp[sender.id] = False
+                if sender.id in broadcast_start_times:
+                    del broadcast_start_times[sender.id]
+                await event.respond("⏳ **Time Out!** 60 seconds limit reached. Aapne 1 minute ke andar message nahi bheja. Please dobara koshish karein.")
+                raise events.StopPropagation
+        
         broadcast_temp[sender.id] = False
+        if sender.id in broadcast_start_times:
+            del broadcast_start_times[sender.id]
+            
         target_user_id = None
         
         if mode == 'personally':
