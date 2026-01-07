@@ -691,6 +691,35 @@ def get_random_welcome_message(username, group_name):
     return selected.format(username=username, group_name=group_name)
 
 async def smart_broadcast_logic(owner_id, event, mode, target_user_id=None):
+    """Broadcast logic with 1-minute timeout"""
+    try:
+        # Check if this is a broadcast operation
+        is_broadcast = mode in ['bot', 'group', 'all', 'personally']
+        
+        if is_broadcast:
+            # Start the broadcast task
+            broadcast_task = asyncio.create_task(actual_broadcast_logic(owner_id, event, mode, target_user_id))
+            
+            # Notify user
+            await client.send_message(owner_id, "📢 Broadcast started! It will automatically stop after 60 seconds if not completed.")
+            
+            try:
+                # Wait for task completion or timeout
+                await asyncio.wait_for(broadcast_task, timeout=60.0)
+            except asyncio.TimeoutError:
+                # Cancel the task if it takes more than 60s
+                broadcast_task.cancel()
+                await client.send_message(owner_id, "⏳ Broadcast Timeout! 60 seconds limit reached.")
+                print(f"[LOG] ⚠️ Broadcast timed out for owner {owner_id}")
+        else:
+            # Normal logic for non-broadcast (though smart_broadcast_logic is usually only for broadcast)
+            await actual_broadcast_logic(owner_id, event, mode, target_user_id)
+            
+    except Exception as e:
+        print(f"[LOG] ❌ Error in smart_broadcast_logic: {e}")
+
+async def actual_broadcast_logic(owner_id, event, mode, target_user_id=None):
+    pass
     targets = []
     if mode == 'bot':
         targets = [{'id': u['user_id'], 'type': 'user', 'data': u} for u in get_all_users().values() if not u.get('banned')]
@@ -911,24 +940,12 @@ async def check_message_timeout(event):
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start_handler(event):
-    # Enforce 1-minute timeout
-    if not await check_message_timeout(event):
-        return
-
     # Check if in group and group is removed
     if event.is_group:
         chat = await event.get_chat()
         if not is_group_active(chat.id):
             print(f"[LOG] ⏭️ /start ignored - Group {chat.title} is removed")
             raise events.StopPropagation
-
-    # Isolate group/private chats: Each (chat_id, user_id) has its own state
-    chat_id = event.chat_id
-    user_id = event.sender_id
-    
-    # Check 1-minute timeout
-    if not await check_message_timeout(event):
-        return
 
     sender = await event.get_sender()
     if not sender:
@@ -1000,14 +1017,6 @@ async def start_handler(event):
 
 @client.on(events.CallbackQuery)
 async def callback_handler(event):
-    # Isolate group/private chats: Each (chat_id, user_id) has its own state
-    chat_id = event.chat_id
-    user_id = event.sender_id
-    
-    # Check 1-minute timeout
-    if not await check_message_timeout(event):
-        return
-
     sender = await event.get_sender()
     if not sender:
         return
@@ -2602,14 +2611,6 @@ async def callback_handler(event):
 
 @client.on(events.NewMessage(incoming=True))
 async def message_handler(event):
-    # Isolate group/private chats: Each (chat_id, user_id) has its own state
-    chat_id = event.chat_id
-    user_id = event.sender_id
-    
-    # Check 1-minute timeout
-    if not await check_message_timeout(event):
-        return
-
     sender = await event.get_sender()
     if not sender:
         return
@@ -3455,10 +3456,6 @@ async def member_joined_handler(event):
 @client.on(events.NewMessage(incoming=True))
 async def group_message_handler(event):
     try:
-        # Check 1-minute timeout
-        if not await check_message_timeout(event):
-            return
-
         if not event.is_group:
             return
             
