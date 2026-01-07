@@ -55,6 +55,7 @@ api_field_mapping_temp = {}  # Store pending API field mappings: {user_id: {'api
 panel_owner = {}  # Track which user owns which panel message: {(chat_id, msg_id): user_id}
 group_commands = {}  # Track ongoing group commands: {chat_id: {user_id: command_info}}
 chat_tool_session = {}  # Scoped tool sessions: {(chat_id, user_id): tool_name}
+last_interaction_time = {}  # Track last message time: {(chat_id, user_id): datetime}
 bad_words_action_temp = {}  # Bad words management: {user_id: 'add' or 'remove'}
 
 async def safe_answer(event, text="", alert=False):
@@ -891,14 +892,43 @@ async def check_user_access(sender_id):
 
     return {'allowed': True}
 
+async def check_message_timeout(event):
+    """Enforce 1-minute timeout per (chat_id, user_id) pair"""
+    user_id = event.sender_id
+    chat_id = event.chat_id
+    key = (chat_id, user_id)
+    now = datetime.now()
+    
+    if key in last_interaction_time:
+        diff = (now - last_interaction_time[key]).total_seconds()
+        if diff < 60:
+            wait_time = int(60 - diff)
+            await send_error_message(event, f"⏳ Please wait {wait_time} seconds before sending another message.", delete_after=5)
+            return False
+            
+    last_interaction_time[key] = now
+    return True
+
 @client.on(events.NewMessage(pattern='/start'))
 async def start_handler(event):
+    # Enforce 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     # Check if in group and group is removed
     if event.is_group:
         chat = await event.get_chat()
         if not is_group_active(chat.id):
             print(f"[LOG] ⏭️ /start ignored - Group {chat.title} is removed")
             raise events.StopPropagation
+
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
 
     sender = await event.get_sender()
     if not sender:
@@ -970,6 +1000,14 @@ async def start_handler(event):
 
 @client.on(events.CallbackQuery)
 async def callback_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -998,10 +1036,23 @@ async def callback_handler(event):
             [Button.inline('➕ Add', b'group_add'), Button.inline('❌ Remove', b'group_remove')],
             [Button.inline('📋 List', b'group_list_page_1'), Button.inline('🗑️ Removed Groups', b'groups_removed_1')],
             [Button.inline('👋 Welcome Msgs', b'group_welcome_text')],
+            [Button.inline('🏛️ Official Group', b'official_group_setting')],
             [Button.inline('🔙 Back', b'owner_back')],
         ]
         group_text = f"GROUPS\n\nConnected: {len(groups)}\n\nWhat do you want to do?"
         await event.edit(group_text, buttons=buttons)
+
+    elif data == b'official_group_setting':
+        current = get_setting('official_group_link', 'Not Set')
+        buttons = [
+            [Button.inline('✏️ Edit Link', b'edit_official_link')],
+            [Button.inline('🔙 Back', b'owner_groups')]
+        ]
+        await event.edit(f"🏛️ OFFICIAL GROUP\n\nCurrent Link: {current}", buttons=buttons)
+
+    elif data == b'edit_official_link':
+        start_text_temp[sender.id] = 'official_link'
+        await event.edit("🔗 Enter new Official Group link:", buttons=[[Button.inline('❌ Cancel', b'official_group_setting')]])
 
     elif data == b'group_welcome_text':
         buttons = [
@@ -1293,10 +1344,23 @@ async def callback_handler(event):
             [Button.inline('➕ Add', b'group_add'), Button.inline('❌ Remove', b'group_remove')],
             [Button.inline('📋 List', b'group_list_page_1'), Button.inline('🗑️ Removed Groups', b'groups_removed_1')],
             [Button.inline('👋 Welcome Msgs', b'group_welcome_text')],
+            [Button.inline('🏛️ Official Group', b'official_group_setting')],
             [Button.inline('🔙 Back', b'owner_back')],
         ]
         group_text = f"GROUPS\n\nConnected: {len(groups)}\n\nWhat do you want to do?"
         await event.edit(group_text, buttons=buttons)
+
+    elif data == b'official_group_setting':
+        current = get_setting('official_group_link', 'Not Set')
+        buttons = [
+            [Button.inline('✏️ Edit Link', b'edit_official_link')],
+            [Button.inline('🔙 Back', b'owner_groups')]
+        ]
+        await event.edit(f"🏛️ OFFICIAL GROUP\n\nCurrent Link: {current}", buttons=buttons)
+
+    elif data == b'edit_official_link':
+        start_text_temp[sender.id] = 'official_link'
+        await event.edit("🔗 Enter new Official Group link:", buttons=[[Button.inline('❌ Cancel', b'official_group_setting')]])
 
     elif data.startswith(b'groups_removed_'):
         page = int(data.split(b'_')[2])
@@ -2538,6 +2602,14 @@ async def callback_handler(event):
 
 @client.on(events.NewMessage(incoming=True))
 async def message_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -2570,6 +2642,17 @@ async def message_handler(event):
             await event.respond(f'❌ Database restore failed: {str(e)}')
             print(f"[LOG] ❌ Database restore error: {e}")
 
+        raise events.StopPropagation
+
+    # Handle official group link input
+    if sender.id in start_text_temp and start_text_temp[sender.id] == 'official_link':
+        new_link = event.text.strip()
+        if not new_link.startswith('https://t.me/'):
+            await event.respond("❌ Invalid link! Must start with https://t.me/")
+            return
+        set_setting('official_group_link', new_link)
+        del start_text_temp[sender.id]
+        await event.respond(f"✅ Official Group link updated to:\n{new_link}", buttons=[[Button.inline('🔙 Back', b'official_group_setting')]])
         raise events.StopPropagation
 
     # Handle bad words add/remove (text or file)
@@ -3378,7 +3461,15 @@ async def group_message_handler(event):
         chat = await event.get_chat()
         grp_id = chat.id
 
-        sender = await event.get_sender()
+        # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
+    sender = await event.get_sender()
 
         if not sender or not chat:
             return
@@ -3489,6 +3580,14 @@ async def ban_handler(event):
         chat = await event.get_chat()
         if not is_group_active(chat.id):
             raise events.StopPropagation
+
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
 
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
@@ -3621,6 +3720,14 @@ async def unban_handler(event):
         if not is_group_active(chat.id):
             raise events.StopPropagation
 
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
 
@@ -3716,6 +3823,14 @@ async def gban_handler(event):
         chat = await event.get_chat()
         if not is_group_active(chat.id):
             raise events.StopPropagation
+
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
 
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
@@ -3830,6 +3945,14 @@ async def info_handler(event):
         if not is_group_active(chat.id):
             raise events.StopPropagation
 
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
 
@@ -3918,6 +4041,14 @@ async def warn_handler(event):
     if not is_group_active(chat.id):
         raise events.StopPropagation
     
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
     
@@ -4012,6 +4143,14 @@ async def delwarn_handler(event):
     if not is_group_active(chat.id):
         raise events.StopPropagation
     
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
     
@@ -4095,6 +4234,14 @@ async def unwarn_handler(event):
     if not is_group_active(chat.id):
         raise events.StopPropagation
     
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
     
@@ -4164,6 +4311,14 @@ async def mute_handler(event):
     if not is_group_active(chat.id):
         raise events.StopPropagation
     
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
     
@@ -4249,6 +4404,14 @@ async def unmute_handler(event):
     if not is_group_active(chat.id):
         raise events.StopPropagation
     
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
     
@@ -4309,6 +4472,14 @@ async def unmute_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/num(?:\s+(.+))?'))
 async def num_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4358,6 +4529,14 @@ async def num_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/adhar(?:\s+(.+))?'))
 async def adhar_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4406,6 +4585,14 @@ async def adhar_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/family(?:\s+(.+))?'))
 async def family_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4454,6 +4641,14 @@ async def family_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/vhe(?:\s+(.+))?'))
 async def vhe_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4502,6 +4697,14 @@ async def vhe_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/ifsc(?:\s+(.+))?'))
 async def ifsc_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4550,6 +4753,14 @@ async def ifsc_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/pak(?:\s+(.+))?'))
 async def pak_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4598,6 +4809,14 @@ async def pak_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/pin(?:\s+(.+))?'))
 async def pin_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4646,6 +4865,14 @@ async def pin_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/imei(?:\s+(.+))?'))
 async def imei_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4694,6 +4921,14 @@ async def imei_handler(event):
 
 @client.on(events.NewMessage(pattern=r'/ip(?:\s+(.+))?'))
 async def ip_handler(event):
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
     if not sender:
         return
@@ -4747,6 +4982,14 @@ async def help_handler(event):
         chat = await event.get_chat()
         if not is_group_active(chat.id):
             raise events.StopPropagation
+
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
 
     sender = await event.get_sender()
 
@@ -4815,6 +5058,14 @@ async def hello_handler(event):
         if not is_group_active(chat.id):
             raise events.StopPropagation
 
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
+
     sender = await event.get_sender()
 
     # Check access
@@ -4845,6 +5096,14 @@ async def time_handler(event):
         chat = await event.get_chat()
         if not is_group_active(chat.id):
             raise events.StopPropagation
+
+    # Isolate group/private chats: Each (chat_id, user_id) has its own state
+    chat_id = event.chat_id
+    user_id = event.sender_id
+    
+    # Check 1-minute timeout
+    if not await check_message_timeout(event):
+        return
 
     sender = await event.get_sender()
 
