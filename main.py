@@ -1030,22 +1030,21 @@ async def callback_handler(event):
 
     # Panel access control - verify panel owner
     panel_key = (event.chat_id, event.message_id)
-    if panel_key in panel_owner and panel_owner[panel_key] != sender.id:
-        # Check if it's a "back" button from a sub-menu that might not have the correct owner
-        # or if the panel owner tracking is causing issues.
-        # For now, let's allow the owner to interact with any panel for debugging,
-        # and ensure users can interact with their own panels.
-        if sender.id != owner_id:
+    is_owner = sender.id == owner_id
+    
+    # Allow the panel owner to interact
+    if panel_key in panel_owner:
+        if panel_owner[panel_key] != sender.id and not is_owner:
             await safe_answer(event, "❌ Yeh panel tumhara nahi hai!", alert=True)
             return
 
-    if sender.id != owner_id:
+    if not is_owner:
         user_data = get_user(sender.id)
         if user_data and user_data.get('banned'):
             await safe_answer(event, "🚫 You are BANNED!", alert=True)
             return
+        
         # Allow user_ callbacks and check_subscription for users
-        # Fix: Check for byte string or decoded string for consistency
         callback_data = data.decode() if isinstance(data, bytes) else data
         allowed_for_users = callback_data.startswith('user_') or callback_data == 'check_subscription'
         if not allowed_for_users:
