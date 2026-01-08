@@ -1035,18 +1035,19 @@ async def callback_handler(event):
     # Decoded callback data for routing
     callback_data = data.decode() if isinstance(data, bytes) else data
     
-    # Strictly verify panel ownership
-    if panel_key in panel_owner:
-        actual_owner_id = panel_owner[panel_key]
-        if actual_owner_id != sender.id and not is_owner:
-            await safe_answer(event, "❌ Yeh panel tumhara nahi hai! Apna panel open karne ke liye /start type karo.", alert=True)
-            return
-    elif not is_owner:
-        # If we don't have record of the panel but it's a user callback, 
-        # it's better to be safe and reject it if it's not the owner.
-        if callback_data.startswith('user_'):
-             await safe_answer(event, "❌ Session expired or invalid panel. Please use /start again.", alert=True)
-             return
+    # Strictly verify panel ownership for user-specific panels
+    if callback_data.startswith('user_'):
+        if panel_key in panel_owner:
+            actual_owner_id = panel_owner[panel_key]
+            if actual_owner_id != sender.id and not is_owner:
+                await safe_answer(event, "❌ Yeh panel tumhara nahi hai! Apna panel open karne ke liye /start type karo.", alert=True)
+                return
+        else:
+            # If we don't have record of the panel but it's a user callback, 
+            # we should reject it to be safe in groups.
+            if not is_owner:
+                 await safe_answer(event, "❌ Session expired or invalid panel. Please use /start again.", alert=True)
+                 return
 
     # Routing logic
     if not is_owner:
