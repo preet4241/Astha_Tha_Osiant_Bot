@@ -1035,15 +1035,18 @@ async def callback_handler(event):
     # Decoded callback data for routing
     callback_data = data.decode() if isinstance(data, bytes) else data
     
-    # Bypass panel ownership check for users to allow their own panels
+    # Strictly verify panel ownership
     if panel_key in panel_owner:
-        if panel_owner[panel_key] != sender.id and not is_owner:
-            await safe_answer(event, "❌ Yeh panel tumhara nahi hai!", alert=True)
+        actual_owner_id = panel_owner[panel_key]
+        if actual_owner_id != sender.id and not is_owner:
+            await safe_answer(event, "❌ Yeh panel tumhara nahi hai! Apna panel open karne ke liye /start type karo.", alert=True)
             return
-    # Fix: If it's a group and we don't know the owner, but it's a user callback, 
-    # we should check if the message being edited was intended for this user.
-    # The panel_owner dict already handles this, but we need to make sure 
-    # user_ back and other callbacks don't break this.
+    elif not is_owner:
+        # If we don't have record of the panel but it's a user callback, 
+        # it's better to be safe and reject it if it's not the owner.
+        if callback_data.startswith('user_'):
+             await safe_answer(event, "❌ Session expired or invalid panel. Please use /start again.", alert=True)
+             return
 
     # Routing logic
     if not is_owner:
