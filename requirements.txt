@@ -10,3 +10,8 @@ flask
 fuzzywuzzy
 python-Levenshtein
 telethon
+aiohttp
+flask
+fuzzywuzzy
+python-Levenshtein
+telethon
