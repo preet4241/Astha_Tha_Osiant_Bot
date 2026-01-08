@@ -1069,13 +1069,6 @@ async def callback_handler(event):
 
     elif data == b'official_group_add':
         from database import get_official_groups
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
         groups = get_all_groups()
         official_ids = [g['group_id'] for g in get_official_groups()]
         available = [g for g in groups if g['group_id'] not in official_ids]
@@ -1158,14 +1151,12 @@ async def callback_handler(event):
         await event.edit(text, buttons=buttons)
 
     elif data == b'group_welcome_text_msgs':
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        if official_groups:
+            groups = official_groups
+        else:
+            groups = get_all_groups()
         total_groups = len(groups)
         msg_text = f"Total Groups Connected: {total_groups}\n\n"
         for i, grp in enumerate(groups, 1):
@@ -1195,14 +1186,9 @@ async def callback_handler(event):
         await event.edit("ADD GROUP\n\nChoose one method:\n1. Group ID (number)\n2. Group username (@username)\n3. Forward message from group", buttons=buttons)
 
     elif data == b'group_remove':
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        groups = official_groups if official_groups else get_all_groups()
         if not groups:
             await event.edit('No groups to remove!', buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
         else:
@@ -1222,14 +1208,9 @@ async def callback_handler(event):
                 await safe_answer(event, '✅ Group removed!')
 
     elif data == b'group_remove_next':
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        groups = official_groups if official_groups else get_all_groups()
         page = group_page_temp.get(sender.id, 1) + 1
         total_pages = (len(groups) + 5) // 6
         if page > total_pages:
@@ -1246,14 +1227,9 @@ async def callback_handler(event):
         await event.edit('REMOVE GROUP\n\nSelect group to remove:', buttons=buttons)
 
     elif data == b'group_list_page_1':
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        groups = official_groups if official_groups else get_all_groups()
         if not groups:
             await event.edit('No groups yet!', buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
         else:
@@ -1270,14 +1246,9 @@ async def callback_handler(event):
             await event.edit('GROUPS LIST', buttons=buttons)
 
     elif data == b'group_list_next':
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        groups = official_groups if official_groups else get_all_groups()
         page = group_page_temp.get(sender.id, 1) + 1
         total_pages = (len(groups) + 5) // 6
         if page > total_pages:
@@ -1296,14 +1267,9 @@ async def callback_handler(event):
     elif data.startswith(b'remove_grp_'):
         group_id = int(data.split(b'_')[2])
         remove_group(group_id)
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        groups = official_groups if official_groups else get_all_groups()
         if not groups:
             await event.edit('All groups removed!', buttons=[[Button.inline('🔙 Back', b'owner_groups')]])
         else:
@@ -1324,14 +1290,9 @@ async def callback_handler(event):
 
     elif data.startswith(b'show_grp_'):
         group_id = int(data.split(b'_')[2])
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        groups = official_groups if official_groups else get_all_groups()
         grp_info = next((g for g in groups if g['group_id'] == group_id), None)
         if grp_info:
             info_text = f"👥 GROUP: {grp_info['title']}\nID: {grp_info['group_id']}\nUsername: @{grp_info['username']}\nAdded: {grp_info['added_date'][:10]}"
@@ -1512,13 +1473,6 @@ async def callback_handler(event):
 
     elif data == b'official_group_add':
         from database import get_official_groups
-        # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
         groups = get_all_groups()
         official_ids = [g['group_id'] for g in get_official_groups()]
         available = [g for g in groups if g['group_id'] not in official_ids]
