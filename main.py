@@ -2431,13 +2431,13 @@ async def callback_handler(event):
 
     elif data == b'setting_groups':
         # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        if official_groups:
+            groups = official_groups
+        else:
+            # Fallback to all groups if no official groups defined
+            groups = get_all_groups()
         buttons = [
             [Button.inline('➕ Add', b'group_add'), Button.inline('➖ Remove', b'group_remove')],
             [Button.inline('📋 List', b'group_list_page_1'), Button.inline('👋 Welcome', b'group_welcome_text')],
@@ -2567,13 +2567,13 @@ async def callback_handler(event):
         # Get channels and groups count
         channels = get_all_channels()
         # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        if official_groups:
+            groups = official_groups
+        else:
+            # Fallback to all groups if no official groups defined
+            groups = get_all_groups()
 
         # Get backup info
         backup_channel = get_backup_channel()
@@ -2656,13 +2656,13 @@ async def callback_handler(event):
 
     elif data == b'user_tools':
         # Official Groups Filter: Only show official groups in lists/tools
-    from database import get_official_groups
-    official_groups = get_official_groups()
-    if official_groups:
-        groups = official_groups
-    else:
-        # Fallback to all groups if no official groups defined
-        groups = get_all_groups()
+        from database import get_official_groups
+        official_groups = get_official_groups()
+        if official_groups:
+            groups = official_groups
+        else:
+            # Fallback to all groups if no official groups defined
+            groups = get_all_groups()
         if not groups:
             msg = '❌ No groups connected to this bot yet.\n\nTools can only be used in connected groups.'
             buttons = [[Button.inline('🔙 Back', b'user_back')]]
