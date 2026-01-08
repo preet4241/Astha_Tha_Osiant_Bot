@@ -1032,22 +1032,67 @@ async def callback_handler(event):
     panel_key = (event.chat_id, event.message_id)
     is_owner = sender.id == owner_id
     
-    # Allow the panel owner to interact
+    # Decoded callback data for routing
+    callback_data = data.decode() if isinstance(data, bytes) else data
+    
+    # Bypass panel ownership check for users to allow their own panels
     if panel_key in panel_owner:
         if panel_owner[panel_key] != sender.id and not is_owner:
             await safe_answer(event, "❌ Yeh panel tumhara nahi hai!", alert=True)
             return
 
+    # Routing logic
     if not is_owner:
         user_data = get_user(sender.id)
         if user_data and user_data.get('banned'):
             await safe_answer(event, "🚫 You are BANNED!", alert=True)
             return
         
-        # Allow user_ callbacks and check_subscription for users
-        callback_data = data.decode() if isinstance(data, bytes) else data
-        allowed_for_users = callback_data.startswith('user_') or callback_data == 'check_subscription'
-        if not allowed_for_users:
+        # User-specific callback handling
+        if callback_data == 'user_profile':
+            user = get_user(sender.id)
+            if user:
+                joined_date = user['joined'][:10] if user['joined'] else 'Unknown'
+                status_emoji = '✅' if not user['banned'] else '🚫'
+                status_text = 'ACTIVE' if not user['banned'] else 'BANNED'
+                profile_text = f"👤 **YOUR PROFILE**\n\nName: {user['first_name']}\nUsername: @{user['username']}\nID: {user['user_id']}\nMessages: {user['messages']}\nJoined: {joined_date}\nStatus: {status_emoji} {status_text}"
+            else:
+                profile_text = "❌ Profile not found!"
+            await event.edit(profile_text, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+            return
+
+        elif callback_data == 'user_groups':
+            msg = "🚧 **GROUPS FEATURE**\n\nThis feature is currently under development. Please check back later!"
+            await event.edit(msg, buttons=[[Button.inline('👈 Back', b'user_back')]])
+            return
+
+        elif callback_data == 'user_help':
+            current_help = get_setting('user_help_text', '❓ **HELP DESK**')
+            await event.edit(current_help, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+            return
+
+        elif callback_data == 'user_about':
+            current_about = get_setting('user_about_text', 'ℹ️ **ABOUT BOT**')
+            await event.edit(current_about, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+            return
+
+        elif callback_data == 'user_back':
+            bot_user = await client.get_me()
+            add_to_group_url = f"https://t.me/{bot_user.username}?startgroup=true"
+            buttons = [
+                [Button.url('➕ Add me to group', add_to_group_url)],
+                [Button.inline('👤 Profile', b'user_profile'), Button.inline('👥 Groups', b'user_groups')],
+                [Button.inline('❓ Help', b'user_help'), Button.inline('ℹ️ About', b'user_about')],
+            ]
+            stats = get_stats()
+            user_text = format_text(get_setting('user_start_text', get_default_user_text()), sender, stats, user_data)
+            await event.edit(user_text, buttons=buttons)
+            return
+
+        elif callback_data == 'check_subscription':
+            # Subscription check logic...
+            pass 
+        else:
             await safe_answer(event, "Owner only!", alert=True)
             return
 
