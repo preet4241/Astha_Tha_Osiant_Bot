@@ -1002,9 +1002,17 @@ async def start_handler(event):
         panel_owner[(event.chat_id, msg.id)] = sender.id
     else:
         user_data = get_user(sender.id)
+        # Create user panel layout as requested:
+        # Row 1: Add me to group (URL button)
+        # Row 2: Profile, Groups (Callback buttons)
+        # Row 3: Help, About (Callback buttons)
+        bot_user = await client.get_me()
+        add_to_group_url = f"https://t.me/{bot_user.username}?startgroup=true"
+        
         buttons = [
-            [Button.inline('👤 Profile', b'user_profile'), Button.inline('❓ Help', b'user_help')],
-            [Button.inline('ℹ️ About', b'user_about')],
+            [Button.url('➕ Add me to group', add_to_group_url)],
+            [Button.inline('👤 Profile', b'user_profile'), Button.inline('👥 Groups', b'user_groups')],
+            [Button.inline('❓ Help', b'user_help'), Button.inline('ℹ️ About', b'user_about')],
         ]
         custom_text = get_setting('user_start_text', get_default_user_text())
         user_text = format_text(custom_text, sender, stats, user_data)
@@ -2732,16 +2740,29 @@ async def callback_handler(event):
         await event.edit(formatted_about, buttons=[[Button.inline('🔙 Back', b'user_back')]])
 
     elif data == b'user_back':
+        # Create user panel layout as requested:
+        # Row 1: Add me to group (URL button)
+        # Row 2: Profile, Groups (Callback buttons)
+        # Row 3: Help, About (Callback buttons)
+        bot_user = await client.get_me()
+        add_to_group_url = f"https://t.me/{bot_user.username}?startgroup=true"
+        
         buttons = [
-            [Button.inline('🛠️ Tools', b'user_tools')],
-            [Button.inline('👤 Profile', b'user_profile'), Button.inline('❓ Help', b'user_help')],
-            [Button.inline('ℹ️ About', b'user_about')],
+            [Button.url('➕ Add me to group', add_to_group_url)],
+            [Button.inline('👤 Profile', b'user_profile'), Button.inline('👥 Groups', b'user_groups')],
+            [Button.inline('❓ Help', b'user_help'), Button.inline('ℹ️ About', b'user_about')],
         ]
         stats = get_stats()
         user_data = get_user(sender.id)
         custom_text = get_setting('user_start_text', get_default_user_text())
         user_text = format_text(custom_text, sender, stats, user_data)
         await event.edit(user_text, buttons=buttons)
+
+    elif data == b'user_groups':
+        # Under development message with back button
+        msg = "🚧 **GROUPS FEATURE**\n\nThis feature is currently under development. Please check back later!"
+        buttons = [[Button.inline('👈 Back', b'user_back')]]
+        await event.edit(msg, buttons=buttons)
 
     elif data == b'msg_bot_only':
         broadcast_temp[sender.id] = 'bot'
