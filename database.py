@@ -88,7 +88,65 @@ def init_db():
     except Exception as e:
         print(f"[DB] Migration notice: {e}")
     
+    # Create official groups table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS official_groups (
+            group_id INTEGER PRIMARY KEY
+        )
+    ''')
+    conn.commit()
+    
     conn.close()
+
+# Official Groups functions
+def add_official_group(group_id):
+    """Mark a group as official"""
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR REPLACE INTO official_groups (group_id) VALUES (?)', (group_id,))
+    conn.commit()
+    conn.close()
+
+def remove_official_group(group_id):
+    """Remove official status from a group"""
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM official_groups WHERE group_id = ?', (group_id,))
+    conn.commit()
+    conn.close()
+
+def is_group_official(group_id):
+    """Check if a group is official"""
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT 1 FROM official_groups WHERE group_id = ?', (group_id,))
+    res = cursor.fetchone()
+    conn.close()
+    return bool(res)
+
+def get_official_groups():
+    """Get all groups marked as official"""
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT g.group_id, g.group_username, g.group_title, g.invite_link, g.added_date 
+        FROM groups g
+        JOIN official_groups og ON g.group_id = og.group_id
+        WHERE g.is_active = 1
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    groups = []
+    for row in rows:
+        groups.append({
+            'group_id': row[0],
+            'username': row[1],
+            'title': row[2],
+            'invite_link': row[3],
+            'added_date': row[4]
+        })
+    return groups
 
 def add_user(user_id, username, first_name):
     """Add new user to database"""
