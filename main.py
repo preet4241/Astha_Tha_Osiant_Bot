@@ -1040,6 +1040,10 @@ async def callback_handler(event):
         if panel_owner[panel_key] != sender.id and not is_owner:
             await safe_answer(event, "❌ Yeh panel tumhara nahi hai!", alert=True)
             return
+    # Fix: If it's a group and we don't know the owner, but it's a user callback, 
+    # we should check if the message being edited was intended for this user.
+    # The panel_owner dict already handles this, but we need to make sure 
+    # user_ back and other callbacks don't break this.
 
     # Routing logic
     if not is_owner:
