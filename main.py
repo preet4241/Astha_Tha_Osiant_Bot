@@ -1067,13 +1067,59 @@ async def callback_handler(event):
             return
 
         elif callback_data == 'user_help':
-            current_help = get_setting('user_help_text', '❓ **HELP DESK**')
-            await event.edit(current_help, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+            default_help = """❓ **HELP DESK**
+
+👋 Hello {first_name}! Welcome to the multi-tool information hub.
+
+🤖 **Bot Commands:**
+/start - Restart the bot & main menu
+/profile - Check your stats
+/help - Show this guide
+
+🛠️ **Available Lookup Tools:**
+• 📱 Number Info - Find caller details
+• 🆔 Aadhar Info - Identity lookup
+• 🚗 Vehicle Info - RC & Insurance status
+• 🏦 IFSC Info - Bank details finder
+• 🇵🇰 Pak Num - International lookup
+• 📍 Pin Code - Area & Post office info
+
+📌 **How to use:**
+Simply click on a tool from the menu and follow the instructions. Results are provided in a clean, readable format.
+
+💡 **Tip:** Tools work only in connected groups! Join our groups from the menu."""
+            current_help = get_setting('user_help_text', default_help)
+            user_data = get_user(sender.id)
+            formatted_help = format_text(current_help, sender, get_stats(), user_data)
+            await event.edit(formatted_help, buttons=[[Button.inline('🔙 Back', b'user_back')]])
             return
 
         elif callback_data == 'user_about':
-            current_about = get_setting('user_about_text', 'ℹ️ **ABOUT BOT**')
-            await event.edit(current_about, buttons=[[Button.inline('🔙 Back', b'user_back')]])
+            default_about = """ℹ️ **ABOUT THE BOT**
+
+🤖 **Ultimate Multi-Tool Bot**
+The most advanced information lookup tool on Telegram.
+
+📊 **Statistics:**
+• 👥 Total Users: {total_users}
+• ✅ Active Now: {active_users}
+• 🛠️ Active Tools: 9+
+
+📅 **Current Date:** {date}
+⏰ **System Time:** {time}
+
+⚡ **Key Features:**
+• Real-time Lookup APIs
+• Secure User Management
+• Fast Group Moderation
+• Automatic Cloud Backup
+
+Developed with ❤️ by @KissuHQ"""
+            current_about = get_setting('user_about_text', default_about)
+            user_data = get_user(sender.id)
+            stats = get_stats()
+            formatted_about = format_text(current_about, sender, stats, user_data)
+            await event.edit(formatted_about, buttons=[[Button.inline('🔙 Back', b'user_back')]])
             return
 
         elif callback_data == 'user_back':
@@ -1755,20 +1801,67 @@ async def callback_handler(event):
             [Button.inline('✏️ Edit', b'help_desk_edit'), Button.inline('👁️ See', b'help_desk_see')],
             [Button.inline('🔙 Back', b'owner_settings')],
         ]
-        await event.edit('❓ **HELP DESK**\n\nManage user help section:\n\n📝 Edit the help message shown to users\n👁️ Preview current help message', buttons=buttons)
+        default_help = """🛠️ **OWNER HELP DESK**
+
+👑 Hello Boss! Here is your quick guide to manage the bot.
+
+📢 **Broadcast Management:**
+• /broadcast - Send message to everyone
+• Bot Only - Direct messages to users
+• Group Only - Messages to all groups
+
+⚙️ **System Control:**
+• /settings - Access bot configuration
+• /tools - Manage lookup tool statuses
+• /backup - Manually trigger cloud backup
+
+👥 **User Management:**
+• /ban [ID] - Restrict a user
+• /unban [ID] - Lift restriction
+• /stats - View detailed growth reports
+
+🛡️ **Security:**
+• Keep API keys secret
+• Regularly check backup logs
+• Monitor unauthorized group additions"""
+        current_help = get_setting('owner_help_text', default_help)
+        await event.edit(current_help, buttons=buttons)
 
     elif data == b'help_desk_edit':
-        start_text_temp[sender.id] = 'help_desk'
+        start_text_temp[sender.id] = 'owner_help_desk'
         buttons = [[Button.inline('❌ Cancel', b'setting_help_desk')]]
-        help_text = "✏️ **EDIT HELP TEXT**\n\nSend new help message.\n\n📌 **Available Placeholders:**\n{greeting} - Time-based greeting\n{first_name} - User's first name\n{username} - User's username\n{user_id} - User's ID\n{bot_name} - Bot name\n{date} - Current date\n{time} - Current time\n{total_users} - Total users\n{active_users} - Active users\n{user_messages} - User's message count\n{joined_date} - User join date"
+        help_text = "✏️ **EDIT OWNER HELP TEXT**\n\nSend new help message for yourself."
         await event.edit(help_text, buttons=buttons)
 
     elif data == b'help_desk_see':
-        current_help = get_setting('user_help_text', '❓ **HELP DESK**\n\n🤖 **Bot Commands:**\n/start - Start the bot\n/hello - Get a greeting\n/time - Get current time\n\n🛠️ **Available Tools:**\n/num - Phone number lookup\n/adhar - Aadhar info\n/family - Aadhar family lookup\n/vhe - Vehicle information\n/ifsc - IFSC code details\n/pak - Pakistan number info\n/pin - PIN code lookup\n/imei - IMEI information\n/ip - IP address details\n\n📌 **Usage:**\nSelect a tool from the menu or use commands directly.\n\n💡 **Tip:**\nAll tools provide instant results in JSON format.')
+        default_help = """🛠️ **OWNER HELP DESK**
+
+👑 Hello Boss! Here is your quick guide to manage the bot.
+
+📢 **Broadcast Management:**
+• /broadcast - Send message to everyone
+• Bot Only - Direct messages to users
+• Group Only - Messages to all groups
+
+⚙️ **System Control:**
+• /settings - Access bot configuration
+• /tools - Manage lookup tool statuses
+• /backup - Manually trigger cloud backup
+
+👥 **User Management:**
+• /ban [ID] - Restrict a user
+• /unban [ID] - Lift restriction
+• /stats - View detailed growth reports
+
+🛡️ **Security:**
+• Keep API keys secret
+• Regularly check backup logs
+• Monitor unauthorized group additions"""
+        current_help = get_setting('owner_help_text', default_help)
         user_data = get_user(sender.id)
         preview = format_text(current_help, sender, get_stats(), user_data)
         buttons = [[Button.inline('🔙 Back', b'setting_help_desk')]]
-        await event.edit(f"👁️ **HELP TEXT PREVIEW:**\n\n{preview}", buttons=buttons)
+        await event.edit(f"👁️ **OWNER HELP PREVIEW:**\n\n{preview}", buttons=buttons)
 
     elif data == b'setting_about_desk':
         buttons = [
@@ -1784,7 +1877,27 @@ async def callback_handler(event):
         await event.edit(about_text, buttons=buttons)
 
     elif data == b'about_desk_see':
-        current_about = get_setting('user_about_text', 'ℹ️ **ABOUT BOT**\n\n🤖 **Multi-Tool Information Bot**\n\n📊 **Version:** 2.0\n🐍 **Framework:** Telethon\n💾 **Database:** SQLite\n🌐 **Web Dashboard:** Flask\n\n👥 **Total Users:** {total_users}\n✅ **Active Users:** {active_users}\n\n📅 **Date:** {date}\n⏰ **Time:** {time}\n\n⚡ **Features:**\n• 9 Information Tools\n• Group Management\n• Broadcasting System\n• Web Dashboard\n• Auto Backup\n\n💡 **Powered by Telethon MTProto**')
+        default_about = """ℹ️ **ABOUT THE BOT**
+
+🤖 **Ultimate Multi-Tool Bot**
+The most advanced information lookup tool on Telegram.
+
+📊 **Statistics:**
+• 👥 Total Users: {total_users}
+• ✅ Active Now: {active_users}
+• 🛠️ Active Tools: 9+
+
+📅 **Current Date:** {date}
+⏰ **System Time:** {time}
+
+⚡ **Key Features:**
+• Real-time Lookup APIs
+• Secure User Management
+• Fast Group Moderation
+• Automatic Cloud Backup
+
+Developed with ❤️ by @KissuHQ"""
+        current_about = get_setting('user_about_text', default_about)
         user_data = get_user(sender.id)
         preview = format_text(current_about, sender, get_stats(), user_data)
         buttons = [[Button.inline('🔙 Back', b'setting_about_desk')]]
