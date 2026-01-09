@@ -46,6 +46,64 @@ init_db()
 
 client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
 
+# Core Status Check Logic
+async def run_daily_report_and_ping():
+    """Logic to generate report, update status and notify groups"""
+    print("[LOG] Running status check and ping system...")
+    try:
+        # 1. Generate Report and Update Status
+        users = get_all_users_for_report()
+        report_msg = "📊 **Activity Status Report**\n━━━━━━━━━━━━━━━━━━━━━\n\n"
+        active_count = 0
+        deactive_count = 0
+        
+        # Consider user active if they interacted in the last 24 hours
+        cutoff = datetime.now() - timedelta(days=1)
+        
+        for user in users:
+            is_currently_active = False
+            if user['last_active']:
+                try:
+                    last_active_dt = datetime.fromisoformat(user['last_active'])
+                    if last_active_dt > cutoff:
+                        is_currently_active = True
+                except: pass
+            
+            set_user_active_status(user['user_id'], is_currently_active)
+            status_emoji = "✅ Active" if is_currently_active else "❌ Deactive"
+            if is_currently_active:
+                active_count += 1
+            else:
+                deactive_count += 1
+            
+            user_ref = f"@{user['username']}" if user['username'] and user['username'] != 'unknown' else f"[{user['first_name']}](tg://user?id={user['user_id']})"
+            report_msg += f"• {user_ref}: {status_emoji}\n"
+        
+        report_msg += f"\n━━━━━━━━━━━━━━━━━━━━━\n📈 Summary:\n✅ Active: {active_count}\n❌ Deactive: {deactive_count}"
+        
+        # Send report to owner
+        try:
+            await client.send_message(owner_id, report_msg)
+        except Exception as e:
+            print(f"[LOG] Error sending report: {e}")
+        
+        # 2. Notify all connected groups
+        groups = get_all_groups()
+        group_msg = "📢 **Bot Maintenance & Update**\n\nSabhi users dhyan dein! Bot ko use karne ke liye aapka active hona zaroori hai.\n\n👇 Bot start karne ke liye niche button pe click karein!"
+        bot_user = await client.get_me()
+        buttons = [[Button.url("🚀 Start Bot", f"https://t.me/{bot_user.username}")]]
+        
+        for grp in groups:
+            try:
+                await client.send_message(grp['group_id'], group_msg, buttons=buttons)
+            except Exception as e:
+                print(f"[LOG] Error sending group notification to {grp['group_id']}: {e}")
+        
+        return True, report_msg
+    except Exception as e:
+        print(f"[LOG] Run status check error: {e}")
+        return False, str(e)
+
 # Daily Ping System
 async def daily_ping_task():
     """Background task to send daily report and group notifications at 12:00 AM IST"""
@@ -61,53 +119,7 @@ async def daily_ping_task():
             print(f"[LOG] Daily ping task sleeping for {wait_seconds} seconds")
             await asyncio.sleep(wait_seconds)
             
-            print("[LOG] Running daily status check...")
-            
-            # 1. Generate Report and Update Status
-            users = get_all_users_for_report()
-            report_msg = "📊 **Daily Activity Report**\n━━━━━━━━━━━━━━━━━━━━━\n\n"
-            active_count = 0
-            deactive_count = 0
-            
-            # Consider user active if they interacted in the last 24 hours
-            cutoff = datetime.now() - timedelta(days=1)
-            
-            for user in users:
-                is_currently_active = False
-                if user['last_active']:
-                    last_active_dt = datetime.fromisoformat(user['last_active'])
-                    if last_active_dt > cutoff:
-                        is_currently_active = True
-                
-                set_user_active_status(user['user_id'], is_currently_active)
-                status_emoji = "✅ Active" if is_currently_active else "❌ Deactive"
-                if is_currently_active:
-                    active_count += 1
-                else:
-                    deactive_count += 1
-                
-                user_ref = f"@{user['username']}" if user['username'] else f"[{user['first_name']}](tg://user?id={user['user_id']})"
-                report_msg += f"• {user_ref}: {status_emoji}\n"
-            
-            report_msg += f"\n━━━━━━━━━━━━━━━━━━━━━\n📈 Summary:\n✅ Active: {active_count}\n❌ Deactive: {deactive_count}"
-            
-            # Send report to owner
-            try:
-                await client.send_message(owner_id, report_msg)
-            except Exception as e:
-                print(f"[LOG] Error sending daily report: {e}")
-            
-            # 2. Notify all connected groups
-            groups = get_all_groups()
-            group_msg = "📢 **Bot Maintenance & Update**\n\nSabhi users dhyan dein! Bot ko use karne ke liye aapka active hona zaroori hai.\n\n👇 Bot start karne ke liye niche button pe click karein!"
-            bot_username = (await client.get_me()).username
-            buttons = [[Button.url("🚀 Start Bot", f"https://t.me/{bot_username}")]]
-            
-            for grp in groups:
-                try:
-                    await client.send_message(grp['group_id'], group_msg, buttons=buttons)
-                except Exception as e:
-                    print(f"[LOG] Error sending group notification to {grp['group_id']}: {e}")
+            await run_daily_report_and_ping()
                     
         except Exception as e:
             print(f"[LOG] Daily ping task error: {e}")
@@ -4079,6 +4091,20 @@ async def check_admin_permission(event, sender_id=None):
             pass
 
     return False
+
+@client.on(events.NewMessage(pattern=r'/ping'))
+async def manual_ping_handler(event):
+    """Manual trigger for daily report and ping system (Owner only)"""
+    if event.sender_id != owner_id:
+        return
+        
+    status_msg = await event.respond("🔄 **Processing status check and ping system...**")
+    success, result = await run_daily_report_and_ping()
+    
+    if success:
+        await status_msg.edit("✅ **Status check and ping system completed successfully!**\n\nReport has been sent to your private chat.")
+    else:
+        await status_msg.edit(f"❌ **Error running status check:**\n`{result}`")
 
 @client.on(events.NewMessage(pattern=r'/ban(?:\s+(.+))?'))
 async def ban_handler(event):
