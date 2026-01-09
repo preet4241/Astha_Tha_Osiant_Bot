@@ -1018,8 +1018,8 @@ async def check_message_timeout(event):
     
     if key in last_interaction_time:
         diff = (now - last_interaction_time[key]).total_seconds()
-        if diff < 60:
-            wait_time = int(60 - diff)
+        if diff < 5:
+            wait_time = int(5 - diff)
             await send_error_message(event, f"⏳ Please wait {wait_time} seconds before sending another message.", delete_after=5)
             return False
             
@@ -4063,11 +4063,11 @@ async def check_admin_permission(event, sender_id=None):
                     print(f"Anonymous admin detected via message.from_id in group {chat.title}")
                     return True
 
-            # Check regular user using get_participant instead of get_permissions
+            # Check regular user using get_permissions
             if sender_id:
                 try:
-                    participant = await client.get_participant(chat, sender_id)
-                    if isinstance(participant, (ChannelParticipantAdmin, ChannelParticipantCreator)):
+                    permissions = await client.get_permissions(chat, sender_id)
+                    if permissions.is_admin:
                         print(f"User {sender_id} is admin/creator in {chat.title}")
                         return True
                 except Exception as perm_err:
