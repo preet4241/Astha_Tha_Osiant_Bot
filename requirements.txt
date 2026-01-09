@@ -20,3 +20,4 @@ flask
 fuzzywuzzy
 python-Levenshtein
 telethon
+pytz

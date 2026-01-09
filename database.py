@@ -77,6 +77,10 @@ def init_db():
                 cursor.execute('ALTER TABLE users ADD COLUMN ban_reason TEXT')
             if 'ban_date' not in columns:
                 cursor.execute('ALTER TABLE users ADD COLUMN ban_date TEXT')
+            if 'last_active' not in columns:
+                cursor.execute('ALTER TABLE users ADD COLUMN last_active TEXT')
+            if 'is_active' not in columns:
+                cursor.execute('ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1')
             
             cursor.execute("PRAGMA table_info(groups)")
             columns = [col[1] for col in cursor.fetchall()]
@@ -158,8 +162,28 @@ def unban_user(user_id):
 
 def increment_messages(user_id):
     with get_db_conn() as conn:
-        conn.execute('UPDATE users SET messages = messages + 1 WHERE user_id = ?', (user_id,))
+        conn.execute('UPDATE users SET messages = messages + 1, last_active = ? WHERE user_id = ?', (datetime.now().isoformat(), user_id))
         conn.commit()
+
+def update_user_activity(user_id):
+    with get_db_conn() as conn:
+        conn.execute('UPDATE users SET last_active = ?, is_active = 1 WHERE user_id = ?', (datetime.now().isoformat(), user_id))
+        conn.commit()
+
+def set_user_active_status(user_id, status):
+    with get_db_conn() as conn:
+        conn.execute('UPDATE users SET is_active = ? WHERE user_id = ?', (1 if status else 0, user_id))
+        conn.commit()
+
+def is_user_active(user_id):
+    with get_db_conn() as conn:
+        res = conn.execute('SELECT is_active FROM users WHERE user_id = ?', (user_id,)).fetchone()
+        return bool(res and res[0])
+
+def get_all_users_for_report():
+    with get_db_conn() as conn:
+        rows = conn.execute('SELECT user_id, username, first_name, last_active, is_active FROM users').fetchall()
+        return [{'user_id': r[0], 'username': r[1], 'first_name': r[2], 'last_active': r[3], 'is_active': r[4]} for r in rows]
 
 def get_all_users():
     with get_db_conn() as conn:
