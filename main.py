@@ -1032,6 +1032,19 @@ async def activity_tracker(event):
 
 @client.on(events.NewMessage(pattern='/start'))
 async def start_handler(event):
+    user_id = event.sender_id
+    if user_id:
+        # Check if user is banned
+        user_data = get_user(user_id)
+        if user_data and user_data.get('banned'):
+            # Keep banned status, but update activity if we want to track it
+            # User remains banned, so we don't activate them
+            pass
+        else:
+            # Activate user immediately on /start
+            update_user_activity(user_id)
+            set_user_active_status(user_id, True)
+            
     # Check if in group and group is removed
     if event.is_group:
         chat = await event.get_chat()
