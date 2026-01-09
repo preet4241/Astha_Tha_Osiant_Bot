@@ -48,20 +48,22 @@ client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
 
 # Core Status Check Logic
 async def run_daily_report_and_ping():
-    """Logic to generate report, update status and notify groups"""
+    """Logic to generate report, update status by pinging and notify groups"""
     print("[LOG] Running status check and ping system...")
     try:
-        # 1. Generate Report and Update Status
+        from telethon.errors import UserIsBlockedError, PeerIdInvalidError, InputUserDeactivatedError
+        
         users = get_all_users_for_report()
-        report_msg = "📊 **Activity Status Report**\n━━━━━━━━━━━━━━━━━━━━━\n\n"
         active_count = 0
         deactive_count = 0
         
-        # Consider user active if they interacted in the last 24 hours
+        # Consider user active if they interacted in the last 24 hours AND we can ping them
         cutoff = datetime.now() - timedelta(days=1)
         
         for user in users:
             is_currently_active = False
+            
+            # First check activity timestamp
             if user['last_active']:
                 try:
                     last_active_dt = datetime.fromisoformat(user['last_active'])
@@ -69,17 +71,32 @@ async def run_daily_report_and_ping():
                         is_currently_active = True
                 except: pass
             
+            # If they were active, try a real ping to see if they blocked the bot
+            if is_currently_active:
+                try:
+                    # Send and immediately delete a silent ping message
+                    ping_msg = await client.send_message(user['user_id'], "ping", silent=True)
+                    await client.delete_messages(user['user_id'], [ping_msg.id])
+                except (UserIsBlockedError, PeerIdInvalidError, InputUserDeactivatedError):
+                    is_currently_active = False
+                    print(f"[LOG] 🚫 User {user['user_id']} has blocked the bot or is deactivated.")
+                except Exception as e:
+                    # Other errors (like bot can't send message) might mean deactive too
+                    print(f"[LOG] ⚠️ Ping failed for {user['user_id']}: {e}")
+                    is_currently_active = False
+            
             set_user_active_status(user['user_id'], is_currently_active)
-            status_emoji = "✅ Active" if is_currently_active else "❌ Deactive"
             if is_currently_active:
                 active_count += 1
             else:
                 deactive_count += 1
-            
-            user_ref = f"@{user['username']}" if user['username'] and user['username'] != 'unknown' else f"[{user['first_name']}](tg://user?id={user['user_id']})"
-            report_msg += f"• {user_ref}: {status_emoji}\n"
         
-        report_msg += f"\n━━━━━━━━━━━━━━━━━━━━━\n📈 Summary:\n✅ Active: {active_count}\n❌ Deactive: {deactive_count}"
+        report_msg = f"📊 **Activity Status Report**\n━━━━━━━━━━━━━━━━━━━━━\n\n"
+        report_msg += f"✅ **Active Users**: `{active_count}`\n"
+        report_msg += f"❌ **Deactive Users**: `{deactive_count}`\n"
+        report_msg += f"👥 **Total Users**: `{len(users)}`\n"
+        report_msg += f"\n━━━━━━━━━━━━━━━━━━━━━\n"
+        report_msg += f"Status check completed successfully."
         
         # Send report to owner
         try:
