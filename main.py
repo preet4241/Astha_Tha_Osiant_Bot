@@ -106,7 +106,7 @@ async def run_daily_report_and_ping():
         
         # 2. Notify all connected groups
         groups = get_all_groups()
-        group_msg = "📢 **Bot Maintenance & Update**\n\nSabhi users dhyan dein! Bot ko use karne ke liye aapka active hona zaroori hai.\n\n👇 Bot start karne ke liye niche button pe click karein!"
+        group_msg = "📢 **Bot Activate Karna Zaroori Hai**\n\nSabhi users dhyan dein! Bot ko use karne ke liye aapka active hona zaroori hai.\n\n👇 Bot start karne ke liye niche button pe click karein!"
         bot_user = await client.get_me()
         buttons = [[Button.url("🚀 Start Bot", f"https://t.me/{bot_user.username}")]]
         
