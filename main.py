@@ -19,6 +19,7 @@ from kick_out import check_message_for_bad_words, add_bad_words, remove_bad_word
 app = Flask(__name__)
 bot_status = {"running": False, "start_time": None}
 from database import (
+    init_db,
     add_user, get_user, ban_user, unban_user,
     get_all_users, get_stats, increment_messages,
     set_setting, get_setting, add_channel, remove_channel,
@@ -36,6 +37,9 @@ api_id = int(os.getenv('API_ID', '0'))
 api_hash = os.getenv('API_HASH', '')
 bot_token = os.getenv('BOT_TOKEN', '')
 owner_id = int(os.getenv('OWNER_ID', '0'))
+
+# Initialize database
+init_db()
 
 client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
 
