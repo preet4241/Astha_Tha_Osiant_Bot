@@ -32,7 +32,8 @@ from database import (
     update_api_response_fields, get_api_response_fields,
     set_backup_channel, get_backup_channel, set_backup_interval,
     get_backup_interval, set_last_backup_time, get_last_backup_time,
-    get_db_file, get_user_warnings, add_warning, remove_warning, clear_warnings
+    get_db_file, get_user_warnings, add_warning, remove_warning, clear_warnings,
+    update_user_activity, is_user_active, set_user_active_status, get_all_users_for_report
 )
 
 api_id = int(os.getenv('API_ID', '0'))
