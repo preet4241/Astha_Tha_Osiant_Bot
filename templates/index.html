@@ -1,47 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
-<style>
-    body {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        min-height: 100vh;
-        color: white;
-    }
-</style>
-<div class="container mt-5 text-center">
-    <div class="logo display-1 mb-4">🤖</div>
-    <h1 class="glow-text mb-4">Bot Control Center</h1>
-    <div class="row mt-4">
-        <div class="col-md-3">
-            <div class="card bg-dark text-white shadow">
-                <div class="card-body">
-                    <h3>{{ total_users }}</h3>
-                    <p>Users</p>
-                </div>
-            </div>
+<div class="row mt-4">
+    <div class="col-12 text-center mb-5">
+        <div class="display-1 glow-text">🤖</div>
+        <h1 class="glow-text mt-3">Bot Control Center</h1>
+        <p class="text-secondary">Manage your multi-tool Telegram bot with ease</p>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="glass-card text-center">
+            <div class="h1 gradient-text">{{ total_users }}</div>
+            <div class="text-secondary small uppercase tracking-widest">Total Users</div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-dark text-white shadow">
-                <div class="card-body">
-                    <h3>{{ total_groups }}</h3>
-                    <p>Groups</p>
-                </div>
-            </div>
+    </div>
+    <div class="col-md-3">
+        <div class="glass-card text-center">
+            <div class="h1 gradient-text">{{ total_groups }}</div>
+            <div class="text-secondary small">Connected Groups</div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-dark text-white shadow">
-                <div class="card-body">
-                    <h3>{{ total_channels }}</h3>
-                    <p>Channels</p>
-                </div>
-            </div>
+    </div>
+    <div class="col-md-3">
+        <div class="glass-card text-center">
+            <div class="h1 gradient-text">{{ total_channels }}</div>
+            <div class="text-secondary small">Active Channels</div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-dark text-white shadow">
-                <div class="card-body">
-                    <h3>{{ active_tools }}</h3>
-                    <p>Tools</p>
-                </div>
-            </div>
+    </div>
+    <div class="col-md-3">
+        <div class="glass-card text-center">
+            <div class="h1 gradient-text">{{ active_tools }}</div>
+            <div class="text-secondary small">Active Tools</div>
         </div>
     </div>
 </div>

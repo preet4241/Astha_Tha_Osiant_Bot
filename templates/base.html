@@ -6,51 +6,150 @@
     <title>Bot Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .particle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 15s infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+            transition: transform 0.3s;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-5px);
+        }
+
         .gradient-text {
-            background: linear-gradient(45deg, #ff00cc, #3333ff);
+            background: linear-gradient(45deg, #00d4ff, #00ff88);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             font-weight: bold;
         }
-        .navbar-brand {
-            display: flex;
-            align-items: center;
+
+        .sidebar {
+            background: rgba(0, 0, 0, 0.8) !important;
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-link {
+            color: rgba(255, 255, 255, 0.7) !important;
+            padding: 15px 20px !important;
+            border-radius: 10px;
+            margin: 5px 10px;
+            transition: all 0.3s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: #00d4ff !important;
+        }
+
+        .glow-text {
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        #content {
+            position: relative;
+            z-index: 1;
+            padding-top: 20px;
         }
     </style>
 </head>
-<body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+<body>
+    <div class="particles" id="particles"></div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-transparent border-bottom border-secondary">
         <div class="container-fluid">
             <button class="btn btn-outline-light me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <a class="navbar-brand" href="/">
-                <span class="gradient-text h4 mb-0" id="bot-name">Loading Bot...</span>
+                <span class="gradient-text h4 mb-0" id="bot-name">Telegram Bot</span>
             </a>
         </div>
     </nav>
 
-    <div class="offcanvas offcanvas-start bg-dark text-white" tabindex="-1" id="sidebar">
+    <div class="offcanvas offcanvas-start sidebar text-white" tabindex="-1" id="sidebar">
         <div class="offcanvas-header">
-            <h5 class="offcanvas-title">Menu</h5>
+            <h5 class="offcanvas-title gradient-text">Menu Control</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
         </div>
         <div class="offcanvas-body p-0">
-            <div class="list-group list-group-flush">
-                <a href="/users" class="list-group-item list-group-item-action bg-dark text-white border-secondary">Users</a>
-                <a href="/groups" class="list-group-item list-group-item-action bg-dark text-white border-secondary">Groups</a>
-                <a href="/channels" class="list-group-item list-group-item-action bg-dark text-white border-secondary">Channels</a>
-                <a href="/tools" class="list-group-item list-group-item-action bg-dark text-white border-secondary">Tools</a>
+            <div class="nav flex-column">
+                <a href="/" class="nav-link">🏠 Dashboard</a>
+                <a href="/users" class="nav-link">👥 User Manager</a>
+                <a href="/groups" class="nav-link">🏘️ Group Tools</a>
+                <a href="/channels" class="nav-link">📢 Channels</a>
+                <a href="/tools" class="nav-link">🛠️ Multi-Tools</a>
             </div>
         </div>
     </div>
 
-    <div id="content">
+    <div id="content" class="container">
         {% block content %}{% endblock %}
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        function createParticles() {
+            const container = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 15 + 's';
+                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+                particle.style.width = (5 + Math.random() * 10) + 'px';
+                particle.style.height = particle.style.width;
+                container.appendChild(particle);
+            }
+        }
+        createParticles();
+
         fetch('/api/bot_info').then(r => r.json()).then(data => {
             document.getElementById('bot-name').innerText = data.name;
         });

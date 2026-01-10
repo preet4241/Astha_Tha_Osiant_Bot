@@ -100,6 +100,19 @@ def api_toggle_tool(tool_name):
     database.set_tool_status(tool_name, active)
     return jsonify({'status': 'success'})
 
+@app.route('/api/tools/<tool_name>/apis', methods=['GET', 'POST'])
+def api_tool_apis(tool_name):
+    if request.method == 'POST':
+        url = request.json.get('url')
+        database.add_tool_api(tool_name, url)
+        return jsonify({'status': 'success'})
+    return jsonify(database.get_tool_apis(tool_name))
+
+@app.route('/api/tools/<tool_name>/apis/<int:api_id>', methods=['DELETE'])
+def api_delete_tool_api(tool_name, api_id):
+    database.remove_tool_api(tool_name, api_id)
+    return jsonify({'status': 'success'})
+
 @app.route('/users')
 def users_page():
     return render_template('users.html')
