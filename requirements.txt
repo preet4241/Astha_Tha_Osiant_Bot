@@ -27,3 +27,4 @@ fuzzywuzzy
 python-Levenshtein
 pytz
 telethon
+flask[async]
