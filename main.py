@@ -23,19 +23,16 @@ import database
 
 app = Flask(__name__)
 
-# API Endpoints for Dashboard
 @app.route('/api/bot_info')
 def get_bot_info():
     try:
-        # Use a synchronous way or pre-fetched info to avoid event loop issues
-        bot_user = client.loop.run_until_complete(client.get_me())
+        # User requested name "PR OSIANT"
         return jsonify({
-            "name": f"{bot_user.first_name} {bot_user.last_name or ''}".strip(),
-            "username": bot_user.username
+            "name": "PR OSIANT",
+            "username": "bot"
         })
     except Exception as e:
-        # Fallback if loop is busy or closed
-        return jsonify({"name": "Telegram Bot", "username": "bot"})
+        return jsonify({"name": "PR OSIANT", "username": "bot"})
 
 @app.route('/api/users')
 def api_users():
