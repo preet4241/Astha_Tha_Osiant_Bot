@@ -258,6 +258,12 @@ def remove_tool_api(tool_name, api_id):
         return True
 
 def add_channel(channel_username, channel_title, channel_id=None):
+    # Sanitize inputs
+    if channel_username:
+        channel_username = str(channel_username).strip().replace("'", "''")
+    if channel_title:
+        channel_title = str(channel_title).strip().replace("'", "''")
+        
     if channel_id is None:
         channel_id = hash(channel_username) % 1000000000
     with get_db_conn() as conn:
