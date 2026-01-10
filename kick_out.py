@@ -34,15 +34,23 @@ def init_bad_words():
     if not os.path.exists(BAD_WORDS_FILE):
         save_bad_words(DEFAULT_BAD_WORDS)
 
+_bad_words_cache = None
+
 def load_bad_words():
+    global _bad_words_cache
+    if _bad_words_cache is not None:
+        return _bad_words_cache
     init_bad_words()
     try:
         with open(BAD_WORDS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            _bad_words_cache = json.load(f)
+            return _bad_words_cache
     except:
         return DEFAULT_BAD_WORDS
 
 def save_bad_words(words):
+    global _bad_words_cache
+    _bad_words_cache = None
     with open(BAD_WORDS_FILE, 'w', encoding='utf-8') as f:
         json.dump(words, f, ensure_ascii=False, indent=2)
 

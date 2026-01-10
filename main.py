@@ -43,9 +43,14 @@ def api_user_detail(user_id):
     user = database.get_user(user_id)
     return jsonify(user) if user else ({'error': 'Not found'}, 404)
 
+def sanitize_text(text, max_len=500):
+    if not text: return ""
+    if not isinstance(text, str): text = str(text)
+    return text.strip()[:max_len]
+
 @app.route('/api/user/<int:user_id>/ban', methods=['POST'])
 def api_ban_user(user_id):
-    reason = request.json.get('reason')
+    reason = sanitize_text(request.json.get('reason'))
     database.ban_user(user_id, reason)
     return jsonify({'status': 'success'})
 
@@ -72,8 +77,12 @@ def api_delete_group(group_id):
 def api_channels():
     if request.method == 'POST':
         data = request.json
-        database.add_channel(data['username'], data.get('title', 'New Channel'))
-        return jsonify({'status': 'success'})
+        username = sanitize_text(data.get('username'))
+        title = sanitize_text(data.get('title', 'New Channel'))
+        if username:
+            database.add_channel(username, title)
+            return jsonify({'status': 'success'})
+        return jsonify({'status': 'error', 'message': 'Invalid username'}), 400
     return jsonify(database.get_all_channels())
 
 @app.route('/api/channels/<username>', methods=['DELETE'])
@@ -100,9 +109,11 @@ def api_toggle_tool(tool_name):
 @app.route('/api/tools/<tool_name>/apis', methods=['GET', 'POST'])
 def api_tool_apis(tool_name):
     if request.method == 'POST':
-        url = request.json.get('url')
-        database.add_tool_api(tool_name, url)
-        return jsonify({'status': 'success'})
+        url = sanitize_text(request.json.get('url'), max_len=1000)
+        if url:
+            database.add_tool_api(tool_name, url)
+            return jsonify({'status': 'success'})
+        return jsonify({'status': 'error', 'message': 'Invalid URL'}), 400
     return jsonify(database.get_tool_apis(tool_name))
 
 @app.route('/api/tools/<tool_name>/apis/<int:api_id>', methods=['DELETE'])

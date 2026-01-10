@@ -148,6 +148,8 @@ def get_user(user_id):
         return None
 
 def ban_user(user_id, reason=None):
+    if reason:
+        reason = str(reason).strip()[:500]
     with get_db_conn() as conn:
         conn.execute('UPDATE users SET banned = 1, ban_reason = ?, ban_date = ? WHERE user_id = ?', 
                      (reason, datetime.now().isoformat() if reason else None, user_id))
