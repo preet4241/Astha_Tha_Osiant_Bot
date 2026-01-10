@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container mt-4">
-    <h2>Channel Management</h2>
-    <div class="card shadow-sm mb-4">
+    <h2 class="gradient-text mb-4">Channel Management</h2>
+    <div class="glass-card mb-4">
         <div class="card-body">
             <div class="input-group">
-                <input type="text" id="channel-input" class="form-control" placeholder="Channel Username or ID">
+                <input type="text" id="channel-input" class="form-control bg-dark text-white border-secondary" placeholder="Channel Username or ID">
                 <button class="btn btn-primary" onclick="addChannel()">Add Channel</button>
             </div>
         </div>
     </div>
-    <div class="card shadow-sm">
+    <div class="glass-card">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-dark table-hover mb-0">
                     <thead>
-                        <tr>
+                        <tr class="border-secondary">
                             <th>Channel ID</th>
                             <th>Title</th>
                             <th>Username</th>
@@ -34,12 +34,12 @@ async function loadChannels() {
     const channels = await res.json();
     const tbody = document.getElementById('channels-table');
     tbody.innerHTML = channels.map(c => `
-        <tr>
+        <tr class="border-secondary">
             <td>${c.channel_id}</td>
             <td>${c.title}</td>
             <td>${c.username || 'N/A'}</td>
             <td>
-                <button class="btn btn-sm btn-danger" onclick="removeChannel('\${c.username}')">Delete</button>
+                <button class="btn btn-sm btn-danger" onclick="removeChannel('${c.username}')">Delete</button>
             </td>
         </tr>
     `).join('');
@@ -54,7 +54,7 @@ async function addChannel() {
     loadChannels();
 }
 async function removeChannel(username) {
-    await fetch(\`/api/channels/\${username}\`, {method: 'DELETE'});
+    await fetch('/api/channels/' + username, {method: 'DELETE'});
     loadChannels();
 }
 loadChannels();

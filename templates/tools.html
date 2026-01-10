@@ -55,7 +55,7 @@ async function loadTools() {
 }
 
 async function toggleTool(name, status) {
-    await fetch(\`/api/tools/\${name}\`, {
+    await fetch('/api/tools/' + name, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({active: status})
@@ -65,14 +65,14 @@ async function toggleTool(name, status) {
 
 async function manageApis(toolName) {
     currentTool = toolName;
-    document.getElementById('apiModalLabel').innerText = \`APIs for \${toolName}\`;
-    const res = await fetch(\`/api/tools/\${toolName}/apis\`);
+    document.getElementById('apiModalLabel').innerText = 'APIs for ' + toolName;
+    const res = await fetch('/api/tools/' + toolName + '/apis');
     const apis = await res.json();
     const list = document.getElementById('apis-list');
     list.innerHTML = apis.map(api => `
         <div class="d-flex justify-content-between align-items-center mb-2 p-2 border border-secondary rounded">
             <div class="text-truncate me-2" title="${api.url}">${api.url}</div>
-            <button class="btn btn-sm btn-danger" onclick="removeApi(\${api.id})">Remove</button>
+            <button class="btn btn-sm btn-danger" onclick="removeApi(${api.id})">Remove</button>
         </div>
     `).join('') || '<p class="text-muted">No APIs configured</p>';
     new bootstrap.Modal(document.getElementById('apiModal')).show();
@@ -81,7 +81,7 @@ async function manageApis(toolName) {
 async function addApi() {
     const url = document.getElementById('api-url').value;
     if(!url) return;
-    await fetch(\`/api/tools/\${currentTool}/apis\`, {
+    await fetch('/api/tools/' + currentTool + '/apis', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({url})
@@ -91,7 +91,7 @@ async function addApi() {
 }
 
 async function removeApi(apiId) {
-    await fetch(\`/api/tools/\${currentTool}/apis/\${apiId}\`, {method: 'DELETE'});
+    await fetch('/api/tools/' + currentTool + '/apis/' + apiId, {method: 'DELETE'});
     manageApis(currentTool);
 }
 

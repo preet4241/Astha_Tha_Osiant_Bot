@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container mt-4">
-    <h2>Group Management</h2>
-    <div class="card shadow-sm">
+    <h2 class="gradient-text mb-4">Group Management</h2>
+    <div class="glass-card">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-dark table-hover mb-0">
                     <thead>
-                        <tr>
+                        <tr class="border-secondary">
                             <th>Group ID</th>
                             <th>Title</th>
                             <th>Username</th>
@@ -27,7 +27,7 @@ async function loadGroups() {
     const groups = await res.json();
     const tbody = document.getElementById('groups-table');
     tbody.innerHTML = groups.map(g => `
-        <tr>
+        <tr class="border-secondary">
             <td>${g.group_id}</td>
             <td>${g.title}</td>
             <td>${g.username || 'N/A'}</td>
@@ -40,7 +40,7 @@ async function loadGroups() {
 }
 async function removeGroup(id) {
     if(confirm('Are you sure?')) {
-        await fetch(\`/api/groups/\${id}\`, {method: 'DELETE'});
+        await fetch('/api/groups/' + id, {method: 'DELETE'});
         loadGroups();
     }
 }
