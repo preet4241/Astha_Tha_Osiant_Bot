@@ -14,7 +14,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            background: #1a1a2e;
             min-height: 100vh;
             color: white;
             overflow-x: hidden;
@@ -50,12 +50,14 @@
         .glass-card {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 20px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.1);
             margin-bottom: 20px;
             transition: transform 0.3s;
+            will-change: transform;
         }
 
         .glass-card:hover {
@@ -97,6 +99,17 @@
             z-index: 1;
             padding-top: 20px;
         }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            z-index: -2;
+        }
     </style>
 </head>
 <body>
@@ -137,6 +150,7 @@
     <script>
         function createParticles() {
             const container = document.getElementById('particles');
+            if(!container) return;
             for (let i = 0; i < 50; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'particle';

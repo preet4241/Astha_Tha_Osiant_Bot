@@ -2,7 +2,13 @@
 {% block content %}
 <div class="container">
     <h2 class="gradient-text mb-4">🛠️ Multi-Tools Manager</h2>
-    <div class="row" id="tools-grid"></div>
+    <div class="row" id="tools-grid">
+        <div class="col-12 text-center p-5">
+            <div class="spinner-border text-info" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- API Management Modal -->
@@ -32,69 +38,118 @@
 <script>
 let currentTool = '';
 
-async function loadTools() {
-    const res = await fetch('/api/tools');
-    const tools = await res.json();
-    const grid = document.getElementById('tools-grid');
-    grid.innerHTML = Object.entries(tools).map(([id, t]) => `
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="glass-card">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="mb-0">${t.name}</h5>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" ${t.active ? 'checked' : ''} 
-                            onchange="toggleTool('${id}', this.checked)">
+// Lazy loading implementation
+const loadTools = async () => {
+    try {
+        const grid = document.getElementById('tools-grid');
+        const res = await fetch('/api/tools');
+        const tools = await res.json();
+        
+        grid.innerHTML = '';
+        
+        // Use document fragment for better performance
+        const fragment = document.createDocumentFragment();
+        
+        Object.entries(tools).forEach(([id, t]) => {
+            const col = document.createElement('div');
+            col.className = 'col-md-6 col-lg-4 mb-4 fade-in';
+            col.innerHTML = `
+                <div class="glass-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">${t.name}</h5>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" ${t.active ? 'checked' : ''} 
+                                onchange="toggleTool('${id}', this.checked)">
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-info w-100" onclick="manageApis('${id}')">Manage APIs</button>
                     </div>
                 </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-info w-100" onclick="manageApis('${id}')">Manage APIs</button>
-                </div>
-            </div>
-        </div>
-    `).join('');
+            `;
+            fragment.appendChild(col);
+        });
+        
+        grid.appendChild(fragment);
+    } catch (error) {
+        console.error('Error loading tools:', error);
+        document.getElementById('tools-grid').innerHTML = '<div class="alert alert-danger">Error loading tools. Please refresh.</div>';
+    }
 }
 
 async function toggleTool(name, status) {
-    await fetch('/api/tools/' + name, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({active: status})
-    });
-    loadTools();
+    try {
+        await fetch('/api/tools/' + name, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({active: status})
+        });
+    } catch (e) {
+        console.error('Toggle failed:', e);
+    }
 }
 
 async function manageApis(toolName) {
     currentTool = toolName;
     document.getElementById('apiModalLabel').innerText = 'APIs for ' + toolName;
-    const res = await fetch('/api/tools/' + toolName + '/apis');
-    const apis = await res.json();
     const list = document.getElementById('apis-list');
-    list.innerHTML = apis.map(api => `
-        <div class="d-flex justify-content-between align-items-center mb-2 p-2 border border-secondary rounded">
-            <div class="text-truncate me-2" title="${api.url}">${api.url}</div>
-            <button class="btn btn-sm btn-danger" onclick="removeApi(${api.id})">Remove</button>
-        </div>
-    `).join('') || '<p class="text-muted">No APIs configured</p>';
+    list.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
+    
+    try {
+        const res = await fetch('/api/tools/' + toolName + '/apis');
+        const apis = await res.json();
+        list.innerHTML = apis.map(api => `
+            <div class="d-flex justify-content-between align-items-center mb-2 p-2 border border-secondary rounded">
+                <div class="text-truncate me-2" title="${api.url}">${api.url}</div>
+                <button class="btn btn-sm btn-danger" onclick="removeApi(${api.id})">Remove</button>
+            </div>
+        `).join('') || '<p class="text-muted">No APIs configured</p>';
+    } catch (e) {
+        list.innerHTML = '<p class="text-danger">Failed to load APIs</p>';
+    }
+    
     new bootstrap.Modal(document.getElementById('apiModal')).show();
 }
 
 async function addApi() {
-    const url = document.getElementById('api-url').value;
+    const urlInput = document.getElementById('api-url');
+    const url = urlInput.value;
     if(!url) return;
-    await fetch('/api/tools/' + currentTool + '/apis', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url})
-    });
-    document.getElementById('api-url').value = '';
-    manageApis(currentTool);
+    
+    try {
+        await fetch('/api/tools/' + currentTool + '/apis', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        urlInput.value = '';
+        manageApis(currentTool);
+    } catch (e) {
+        alert('Failed to add API');
+    }
 }
 
 async function removeApi(apiId) {
-    await fetch('/api/tools/' + currentTool + '/apis/' + apiId, {method: 'DELETE'});
-    manageApis(currentTool);
+    if(!confirm('Delete this API?')) return;
+    try {
+        await fetch('/api/tools/' + currentTool + '/apis/' + apiId, {method: 'DELETE'});
+        manageApis(currentTool);
+    } catch (e) {
+        alert('Failed to remove API');
+    }
 }
 
-loadTools();
+// Initial load with small delay to ensure base is ready
+setTimeout(loadTools, 100);
 </script>
+
+<style>
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
 {% endblock %}
