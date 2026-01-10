@@ -291,6 +291,12 @@ def get_all_channels():
         return [{'channel_id': c[0], 'username': c[1], 'title': c[2], 'added_date': c[3]} for c in channels]
 
 def add_group(group_id, group_username, group_title, invite_link=None, added_by_id=None, added_by_username=None, is_private=1):
+    # Sanitize inputs
+    group_username = str(group_username).strip() if group_username else None
+    group_title = str(group_title).strip() if group_title else "New Group"
+    invite_link = str(invite_link).strip() if invite_link else None
+    added_by_username = str(added_by_username).strip() if added_by_username else None
+
     with get_db_conn() as conn:
         try:
             existing = conn.execute('SELECT is_active FROM groups WHERE group_id = ?', (group_id,)).fetchone()
