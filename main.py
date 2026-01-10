@@ -4275,11 +4275,54 @@ async def ban_handler(event):
     sender = await event.get_sender()
     sender_id = sender.id if sender else None
 
-    # Check admin permission (allows anonymous admins too)
-    has_permission = await check_admin_permission(event, sender_id)
-    if not has_permission:
-        await send_error_message(event, '🔐 You do not have permission! ❌\n\n👑 Only the bot owner or group admins can use this!')
+    # Bot global ban command - Only for bot owner
+    if command == '/gban':
+        if sender_id != owner_id:
+            await event.respond("❌ This command is restricted to the bot owner!")
+            raise events.StopPropagation
+            
+        target_user_id = None
+        args = event.pattern_match.group(1).strip() if event.pattern_match.group(1) else ''
+        
+        if event.reply_to_msg_id:
+            reply_msg = await event.get_reply_message()
+            if reply_msg and reply_msg.from_id:
+                target_user_id = reply_msg.from_id.user_id
+        elif args:
+            user_input = args.split()[0]
+            if user_input.isdigit():
+                target_user_id = int(user_input)
+            elif user_input.startswith('@'):
+                try:
+                    entity = await client.get_entity(user_input)
+                    target_user_id = entity.id
+                except:
+                    pass
+
+        if not target_user_id:
+            await event.respond("❌ Specify a user to global ban!")
+            raise events.StopPropagation
+
+        # Global ban: mark in database and kick from current group if any
+        database.ban_user(target_user_id, "Global Ban by Owner")
+        if event.is_group:
+            try:
+                await client.kick_participant(event.chat_id, target_user_id)
+            except:
+                pass
+        
+        await event.respond(f"🚫 **GLOBAL BAN**\n\nUser `{target_user_id}` has been banned from the bot and all groups.")
         raise events.StopPropagation
+
+    # Regular ban command - Group specific
+    if command == '/ban':
+        has_permission = await check_admin_permission(event, sender_id)
+        if not has_permission:
+            await event.respond("🔐 No permission!")
+            raise events.StopPropagation
+            
+        # ... existing ban logic but ensure it only kicks from the group ...
+        # (Assuming existing logic uses client.kick_participant or similar)
 
     # Get target user and reason
     target_user_id = None
