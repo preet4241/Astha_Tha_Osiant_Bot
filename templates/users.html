@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>User Management</h2>
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Username</th>
+                                    <th>First Name</th>
+                                    <th>Status</th>
+                                    <th>Joined</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table">
+                                <!-- Users will be loaded here via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Detail Modal -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">User Profile Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="user-details">
+                <!-- Details loaded here -->
+            </div>
+            <div class="modal-footer">
+                <div id="user-actions"></div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadUsers() {
+    const res = await fetch('/api/users');
+    const users = await res.json();
+    const tbody = document.getElementById('users-table');
+    tbody.innerHTML = '';
+    
+    Object.values(users).forEach(user => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${user.user_id}</td>
+            <td>${user.username || 'N/A'}</td>
+            <td>${user.first_name || 'N/A'}</td>
+            <td><span class="badge ${user.banned ? 'bg-danger' : 'bg-success'}">${user.banned ? 'Banned' : 'Active'}</span></td>
+            <td>${user.joined}</td>
+            <td>
+                <button class="btn btn-sm btn-info" onclick="viewUser(${user.user_id})">Details</button>
+                ${user.banned ? 
+                    `<button class="btn btn-sm btn-success" onclick="userAction(${user.user_id}, 'unban')">Unban</button>` :
+                    `<button class="btn btn-sm btn-danger" onclick="userAction(${user.user_id}, 'ban')">Ban</button>`
+                }
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function viewUser(userId) {
+    const res = await fetch(`/api/user/${userId}`);
+    const user = await res.json();
+    const details = document.getElementById('user-details');
+    details.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>User ID:</strong> ${user.user_id}</p>
+                <p><strong>Username:</strong> @${user.username || 'N/A'}</p>
+                <p><strong>First Name:</strong> ${user.first_name || 'N/A'}</p>
+                <p><strong>Joined:</strong> ${user.joined}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Messages:</strong> ${user.messages}</p>
+                <p><strong>Status:</strong> ${user.status}</p>
+                ${user.banned ? `<p class="text-danger"><strong>Ban Reason:</strong> ${user.ban_reason || 'No reason'}</p>` : ''}
+            </div>
+        </div>
+        <hr>
+        <h6>Groups Joined:</h6>
+        <div id="user-groups">Loading...</div>
+    `;
+    
+    // Fetch user groups
+    const groupsRes = await fetch(`/api/user/${userId}/groups`);
+    const groups = await groupsRes.json();
+    document.getElementById('user-groups').innerHTML = groups.length > 0 ? 
+        groups.map(g => `<span class="badge bg-secondary m-1">${g.title}</span>`).join('') : 
+        'No groups found';
+
+    const modal = new bootstrap.Modal(document.getElementById('userModal'));
+    modal.show();
+}
+
+async function userAction(userId, action) {
+    const reason = action === 'ban' ? prompt('Enter ban reason:') : null;
+    if (action === 'ban' && reason === null) return;
+    
+    const res = await fetch(`/api/user/${userId}/${action}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason})
+    });
+    if (res.ok) {
+        loadUsers();
+        bootstrap.Modal.getInstance(document.getElementById('userModal'))?.hide();
+    }
+}
+
+loadUsers();
+</script>
+{% endblock %}

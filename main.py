@@ -18,7 +18,112 @@ from flask import Flask, render_template
 from messages import get_random_hello_message, detect_greeting_type, get_response_for_greeting
 from kick_out import check_message_for_bad_words, add_bad_words, remove_bad_words, get_bad_words_count, get_bad_words_file_content, parse_bad_words_input
 
+from flask import Flask, render_template, jsonify, request
+import database
+
 app = Flask(__name__)
+
+# API Endpoints for Dashboard
+@app.route('/api/bot_info')
+async def get_bot_info():
+    me = await client.get_me()
+    return jsonify({"name": f"{me.first_name} {me.last_name or ''}".strip(), "username": me.username})
+
+@app.route('/api/users')
+def api_users():
+    return jsonify(database.get_all_users())
+
+@app.route('/api/user/<int:user_id>')
+def api_user_detail(user_id):
+    user = database.get_user(user_id)
+    return jsonify(user) if user else ({'error': 'Not found'}, 404)
+
+@app.route('/api/user/<int:user_id>/ban', methods=['POST'])
+def api_ban_user(user_id):
+    reason = request.json.get('reason')
+    database.ban_user(user_id, reason)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/user/<int:user_id>/unban', methods=['POST'])
+def api_unban_user(user_id):
+    database.unban_user(user_id)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/user/<int:user_id>/groups')
+async def api_user_groups(user_id):
+    # This is complex to check via telethon for a specific user ID without being in shared groups
+    # We'll return empty for now or logic to check shared groups
+    return jsonify([])
+
+@app.route('/api/groups')
+def api_groups():
+    return jsonify(database.get_all_groups())
+
+@app.route('/api/groups/<int:group_id>', methods=['DELETE'])
+def api_delete_group(group_id):
+    database.remove_group(group_id)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/channels', methods=['GET', 'POST'])
+def api_channels():
+    if request.method == 'POST':
+        data = request.json
+        database.add_channel(data['username'], data.get('title', 'New Channel'))
+        return jsonify({'status': 'success'})
+    return jsonify(database.get_all_channels())
+
+@app.route('/api/channels/<username>', methods=['DELETE'])
+def api_delete_channel(username):
+    database.remove_channel(username)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/tools')
+def api_tools():
+    all_tools = {}
+    for tid, config in TOOL_CONFIG.items():
+        all_tools[tid] = {
+            "name": config['name'],
+            "active": database.get_tool_status(tid)
+        }
+    return jsonify(all_tools)
+
+@app.route('/api/tools/<tool_name>', methods=['POST'])
+def api_toggle_tool(tool_name):
+    active = request.json.get('active')
+    database.set_tool_status(tool_name, active)
+    return jsonify({'status': 'success'})
+
+@app.route('/users')
+def users_page():
+    return render_template('users.html')
+
+@app.route('/groups')
+def groups_page():
+    return render_template('groups.html')
+
+@app.route('/channels')
+def channels_page():
+    return render_template('channels.html')
+
+@app.route('/tools')
+def tools_page():
+    return render_template('tools.html')
+
+@app.route('/')
+def dashboard():
+    stats = database.get_stats()
+    total_tools = len(TOOL_CONFIG)
+    active_tools_count = len(database.get_all_active_tools())
+    total_groups = len(database.get_all_groups())
+    total_channels = len(database.get_all_channels())
+    
+    return render_template('index.html',
+        total_users=stats['total_users'],
+        total_groups=total_groups,
+        total_channels=total_channels,
+        active_tools=active_tools_count
+    )
+
 bot_status = {"running": False, "start_time": None}
 from database import (
     init_db,

@@ -1,432 +1,48 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bot Status Dashboard</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow-x: hidden;
-            padding: 20px;
-        }
-
-        .particles {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            overflow: hidden;
-            z-index: 0;
-        }
-
-        .particle {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            animation: float 15s infinite;
-        }
-
-        @keyframes float {
-            0%, 100% {
-                transform: translateY(100vh) rotate(0deg);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100vh) rotate(720deg);
-                opacity: 0;
-            }
-        }
-
-        .container {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-            z-index: 1;
-            position: relative;
-            animation: fadeIn 1s ease-out;
-            max-width: 500px;
-            width: 100%;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .logo {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 15px;
-            background: linear-gradient(135deg, #00d4ff, #0099ff);
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 40px;
-            animation: pulse 2s infinite;
-            box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-                box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
-            }
-            50% {
-                transform: scale(1.05);
-                box-shadow: 0 0 50px rgba(0, 212, 255, 0.8);
-            }
-        }
-
-        h1 {
-            color: #fff;
-            font-size: 24px;
-            margin-bottom: 5px;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-        }
-
-        .subtitle {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 13px;
-            margin-bottom: 20px;
-        }
-
-        .status-card {
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 15px;
-            padding: 15px;
-            margin-bottom: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .section-title {
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .section-title::before,
-        .section-title::after {
-            content: '';
-            height: 1px;
-            width: 30px;
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            margin-bottom: 15px;
-        }
-
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            animation: blink 1.5s infinite;
-        }
-
-        .status-dot.online {
-            background: #00ff88;
-            box-shadow: 0 0 15px #00ff88;
-        }
-
-        .status-dot.offline {
-            background: #ff4444;
-            box-shadow: 0 0 15px #ff4444;
-        }
-
-        @keyframes blink {
-            0%, 100% {
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        .status-text {
-            color: #fff;
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .uptime-badge {
-            display: inline-block;
-            background: rgba(0, 212, 255, 0.2);
-            color: #00d4ff;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            margin-top: 5px;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .stats-grid-3 {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .stat-item {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-            padding: 12px 8px;
-            transition: transform 0.3s, background 0.3s;
-        }
-
-        .stat-item:hover {
-            transform: translateY(-3px);
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .stat-icon {
-            font-size: 20px;
-            margin-bottom: 5px;
-        }
-
-        .stat-value {
-            color: #00d4ff;
-            font-size: 20px;
-            font-weight: bold;
-            display: block;
-        }
-
-        .stat-label {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .info-row:last-child {
-            border-bottom: none;
-        }
-
-        .info-label {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .info-value {
-            color: #fff;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .tools-progress {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            height: 8px;
-            margin-top: 8px;
-            overflow: hidden;
-        }
-
-        .tools-progress-bar {
-            background: linear-gradient(90deg, #00d4ff, #00ff88);
-            height: 100%;
-            border-radius: 10px;
-            transition: width 0.5s ease;
-        }
-
-        .refresh-btn {
-            background: linear-gradient(135deg, #00d4ff, #0099ff);
-            border: none;
-            color: #fff;
-            padding: 10px 25px;
-            border-radius: 25px;
-            font-size: 13px;
-            cursor: pointer;
-            margin-top: 15px;
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-
-        .refresh-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
-        }
-
-        .last-updated {
-            color: rgba(255, 255, 255, 0.4);
-            font-size: 11px;
-            margin-top: 12px;
-        }
-
-        .glow-text {
-            animation: glow 2s ease-in-out infinite alternate;
-        }
-
-        @keyframes glow {
-            from {
-                text-shadow: 0 0 5px #00d4ff, 0 0 10px #00d4ff;
-            }
-            to {
-                text-shadow: 0 0 10px #00d4ff, 0 0 20px #00d4ff, 0 0 30px #00d4ff;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="particles" id="particles"></div>
-    
-    <div class="container">
-        <div class="logo">🤖</div>
-        <h1 class="glow-text">Telegram Bot Status</h1>
-        <p class="subtitle">Multi-Tool Information Bot</p>
-        
-        <div class="status-card">
-            <div class="status-indicator">
-                <div class="status-dot {{ 'online' if status == 'Online' else 'offline' }}"></div>
-                <span class="status-text">{{ status }}</span>
-            </div>
-            <div class="uptime-badge">⏱️ Uptime: {{ uptime }}</div>
-        </div>
-
-        <div class="status-card">
-            <div class="section-title">User Statistics</div>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-icon">👥</div>
-                    <span class="stat-value">{{ total_users }}</span>
-                    <span class="stat-label">Total Users</span>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-icon">✅</div>
-                    <span class="stat-value">{{ active_users }}</span>
-                    <span class="stat-label">Active</span>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-icon">🚫</div>
-                    <span class="stat-value">{{ banned_users }}</span>
-                    <span class="stat-label">Banned</span>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-icon">💬</div>
-                    <span class="stat-value">{{ total_messages }}</span>
-                    <span class="stat-label">Messages</span>
+{% extends "base.html" %}
+{% block content %}
+<style>
+    body {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        min-height: 100vh;
+        color: white;
+    }
+</style>
+<div class="container mt-5 text-center">
+    <div class="logo display-1 mb-4">🤖</div>
+    <h1 class="glow-text mb-4">Bot Control Center</h1>
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-body">
+                    <h3>{{ total_users }}</h3>
+                    <p>Users</p>
                 </div>
             </div>
         </div>
-
-        <div class="status-card">
-            <div class="section-title">Connections</div>
-            <div class="stats-grid-3">
-                <div class="stat-item">
-                    <div class="stat-icon">🛠️</div>
-                    <span class="stat-value">{{ active_tools }}/{{ total_tools }}</span>
-                    <span class="stat-label">Tools</span>
+        <div class="col-md-3">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-body">
+                    <h3>{{ total_groups }}</h3>
+                    <p>Groups</p>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-icon">👥</div>
-                    <span class="stat-value">{{ total_groups }}</span>
-                    <span class="stat-label">Groups</span>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-icon">📢</div>
-                    <span class="stat-value">{{ total_channels }}</span>
-                    <span class="stat-label">Channels</span>
-                </div>
-            </div>
-            <div class="tools-progress">
-                <div class="tools-progress-bar" style="width: {{ (active_tools / total_tools * 100) if total_tools > 0 else 0 }}%"></div>
             </div>
         </div>
-
-        <div class="status-card">
-            <div class="section-title">Bot Info</div>
-            <div class="info-row">
-                <span class="info-label">👑 Owner ID</span>
-                <span class="info-value">{{ owner_id }}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">🐍 Python</span>
-                <span class="info-value">3.11</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">📡 Framework</span>
-                <span class="info-value">Telethon</span>
+        <div class="col-md-3">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-body">
+                    <h3>{{ total_channels }}</h3>
+                    <p>Channels</p>
+                </div>
             </div>
         </div>
-        
-        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Status</button>
-        <p class="last-updated">Last updated: {{ last_updated }}</p>
+        <div class="col-md-3">
+            <div class="card bg-dark text-white shadow">
+                <div class="card-body">
+                    <h3>{{ active_tools }}</h3>
+                    <p>Tools</p>
+                </div>
+            </div>
+        </div>
     </div>
-
-    <script>
-        function createParticles() {
-            const container = document.getElementById('particles');
-            for (let i = 0; i < 50; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'particle';
-                particle.style.left = Math.random() * 100 + '%';
-                particle.style.animationDelay = Math.random() * 15 + 's';
-                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
-                particle.style.width = (5 + Math.random() * 10) + 'px';
-                particle.style.height = particle.style.width;
-                container.appendChild(particle);
-            }
-        }
-        createParticles();
-
-        setTimeout(() => location.reload(), 30000);
-    </script>
-</body>
-</html>
+</div>
+{% endblock %}

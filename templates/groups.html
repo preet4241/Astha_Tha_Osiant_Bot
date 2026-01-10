@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Group Management</h2>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Group ID</th>
+                            <th>Title</th>
+                            <th>Username</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="groups-table"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+async function loadGroups() {
+    const res = await fetch('/api/groups');
+    const groups = await res.json();
+    const tbody = document.getElementById('groups-table');
+    tbody.innerHTML = groups.map(g => `
+        <tr>
+            <td>${g.group_id}</td>
+            <td>${g.title}</td>
+            <td>${g.username || 'N/A'}</td>
+            <td><span class="badge ${g.is_active ? 'bg-success' : 'bg-secondary'}">${g.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td>
+                <button class="btn btn-sm btn-danger" onclick="removeGroup(${g.group_id})">Remove</button>
+            </td>
+        </tr>
+    `).join('');
+}
+async function removeGroup(id) {
+    if(confirm('Are you sure?')) {
+        await fetch(\`/api/groups/\${id}\`, {method: 'DELETE'});
+        loadGroups();
+    }
+}
+loadGroups();
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Channel Management</h2>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="input-group">
+                <input type="text" id="channel-input" class="form-control" placeholder="Channel Username or ID">
+                <button class="btn btn-primary" onclick="addChannel()">Add Channel</button>
+            </div>
+        </div>
+    </div>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Channel ID</th>
+                            <th>Title</th>
+                            <th>Username</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="channels-table"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+async function loadChannels() {
+    const res = await fetch('/api/channels');
+    const channels = await res.json();
+    const tbody = document.getElementById('channels-table');
+    tbody.innerHTML = channels.map(c => `
+        <tr>
+            <td>${c.channel_id}</td>
+            <td>${c.title}</td>
+            <td>${c.username || 'N/A'}</td>
+            <td>
+                <button class="btn btn-sm btn-danger" onclick="removeChannel('\${c.username}')">Delete</button>
+            </td>
+        </tr>
+    `).join('');
+}
+async function addChannel() {
+    const username = document.getElementById('channel-input').value;
+    await fetch('/api/channels', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username})
+    });
+    loadChannels();
+}
+async function removeChannel(username) {
+    await fetch(\`/api/channels/\${username}\`, {method: 'DELETE'});
+    loadChannels();
+}
+loadChannels();
+</script>
+{% endblock %}

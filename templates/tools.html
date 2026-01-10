@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Tools Management</h2>
+    <div class="row" id="tools-grid"></div>
+</div>
+<script>
+async function loadTools() {
+    const res = await fetch('/api/tools');
+    const tools = await res.json();
+    const grid = document.getElementById('tools-grid');
+    grid.innerHTML = Object.entries(tools).map(([id, t]) => `
+        <div class="col-md-4 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">${t.name}</h5>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" ${t.active ? 'checked' : ''} 
+                            onchange="toggleTool('\${id}', this.checked)">
+                        <label class="form-check-label">${t.active ? 'Enabled' : 'Disabled'}</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+async function toggleTool(name, status) {
+    await fetch(\`/api/tools/\${name}\`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({active: status})
+    });
+    loadTools();
+}
+loadTools();
+</script>
+{% endblock %}
