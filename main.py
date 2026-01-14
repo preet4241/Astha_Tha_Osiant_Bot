@@ -712,43 +712,40 @@ def format_json_as_text_recursive(data, indent=0):
         if not data:
             return "No details available"
             
-        # Try to find common data containers first
-        data_keys = ['data', 'Data', 'Data1', 'data1', 'result', 'info', 'details', 'response', 'items', 'records', 'objects']
-        found_container = False
-        container_data = None
-        for k in data_keys:
-            if k in data and isinstance(data[k], (list, dict)) and data[k]:
-                container_data = data[k]
-                found_container = True
-                break
+        # Sort keys so we can identify containers vs simple fields
+        keys = sorted(data.keys())
         
-        if found_container:
-            dict_text += format_json_as_text_recursive(container_data, indent)
-        else:
-            # Sort keys so containers come first or consistent order
-            for key in sorted(data.keys()):
-                value = data[key]
-                if key.lower() not in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp', 'status', 'error', 'msg', 'message']:
-                    formatted_key = key.replace('_', ' ').title()
-                    if isinstance(value, (dict, list)):
-                        if value:
-                            if indent == 0:
-                                # Top level container - add major separator
-                                dict_text += f"\n📍 **{formatted_key}**\n"
-                                dict_text += format_json_as_text_recursive(value, indent + 1)
-                                dict_text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
-                            else:
-                                dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
-                                dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
+        # If it's the top level (indent 0) and we have nested dicts, treat them as containers
+        for key in keys:
+            value = data[key]
+            if key.lower() in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp', 'status', 'error', 'msg', 'message']:
+                continue
+                
+            formatted_key = key.replace('_', ' ').title()
+            
+            if isinstance(value, dict):
+                if value:
+                    if indent == 0:
+                        # Major container header with spacing
+                        dict_text += f"\n📍 **{formatted_key}**\n"
+                        dict_text += format_json_as_text_recursive(value, indent + 1)
+                        dict_text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
                     else:
-                        clean_value = str(value).strip('`').strip()
-                        if not clean_value and key.lower() == 'email':
-                            clean_value = "Not Provided"
-                        
-                        if clean_value:
-                            dict_text += f"{prefix}• **{formatted_key}**: `{clean_value}`\n"
-                        else:
-                            dict_text += f"{prefix}• **{formatted_key}**: `Not Available`\n"
+                        dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
+                        dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
+            elif isinstance(value, list):
+                if value:
+                    dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
+                    dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
+            else:
+                clean_value = str(value).strip('`').strip()
+                if not clean_value and key.lower() == 'email':
+                    clean_value = "Not Provided"
+                
+                if clean_value:
+                    dict_text += f"{prefix}• **{formatted_key}**: `{clean_value}`\n"
+                else:
+                    dict_text += f"{prefix}• **{formatted_key}**: `Not Available`\n"
     elif isinstance(data, list):
         for i, item in enumerate(data, 1):
             if isinstance(item, (dict, list)):
