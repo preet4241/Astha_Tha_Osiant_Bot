@@ -806,6 +806,8 @@ def get_default_welcome_messages():
         "🎪 Come in @{username}! {group_name} welcomes you to the big show!"
     ]
 
+api_container_mapping_temp = {}
+
 def get_tool_back_button(tool_name):
     """Get the back button callback data for a tool"""
     mapping = {
@@ -2645,6 +2647,35 @@ Developed with ❤️ by @KissuHQ"""
         await event.edit('🌐 IP INFO\n\nManage IP Info APIs', buttons=buttons)
 
     # Handle skip field mapping button
+    elif data.startswith(b'skip_container_mapping_'):
+        api_id = int(data.decode().split('_')[3])
+        if sender.id in api_container_mapping_temp:
+            tool_name = api_container_mapping_temp[sender.id].get('tool_name', 'number_info')
+            del api_container_mapping_temp[sender.id]
+        else:
+            tool_name = 'number_info'
+            
+        update_api_container_name(api_id, None)
+        
+        # Move to Step 3
+        api_field_mapping_temp[sender.id] = {
+            'api_id': api_id,
+            'tool_name': tool_name
+        }
+        
+        field_example = '''📝 **STEP 3: Select Response Fields**
+
+Container skipped! Now choose which fields to show.
+
+**How to send:**
+✅ Simple format: `name, mobile, address`
+✅ Nested format: `data.0.name`
+
+Or type **"skip"** to show full response.'''
+        
+        back_btn = get_tool_back_button(tool_name)
+        await event.edit(field_example, buttons=[[Button.inline('⏭️ Skip (Full JSON)', f'skip_field_mapping_{api_id}'.encode())], [Button.inline('❌ Cancel', back_btn)]])
+
     elif data.startswith(b'skip_field_mapping_'):
         api_id = int(data.decode().split('_')[3])
         # Clear any pending field mapping session
@@ -3357,7 +3388,7 @@ async def message_handler(event):
                 await event.respond('❌ No valid words found!', buttons=[[Button.inline('🔙 Back', b'setting_bad_words')]])
         raise events.StopPropagation
 
-    # Handle API field mapping input (Step 2 of API add)
+    # Handle API field mapping input (Step 3 of API add)
     if sender.id in api_field_mapping_temp:
         mapping_info = api_field_mapping_temp[sender.id]
         api_id = mapping_info['api_id']
@@ -3384,31 +3415,28 @@ async def message_handler(event):
                 await event.respond('❌ Invalid fields!\n\nSend field names separated by comma or type "skip" for full JSON.')
         raise events.StopPropagation
 
-    # Handle API URL input (Step 1 of API add)
-    if sender.id in tool_api_action:
-        tool_name = tool_api_action[sender.id]
-        api_url = event.text.strip()
-
-        # Validate that URL contains the placeholder
-        placeholder = TOOL_CONFIG[tool_name]['placeholder']
-        if placeholder not in api_url:
-            await event.respond(f'❌ Invalid API URL!\n\nURL must contain placeholder: {placeholder}', buttons=[[Button.inline('🔙 Back', f'tool_{tool_name.split("_")[0]}_info'.encode())]])
-            raise events.StopPropagation
-
-        # Add API to database and get ID
-        api_id = add_tool_api(tool_name, api_url)
-        del tool_api_action[sender.id]
+    # Handle API container name input (Step 2 of API add)
+    if sender.id in api_container_mapping_temp:
+        mapping_info = api_container_mapping_temp[sender.id]
+        api_id = mapping_info['api_id']
+        tool_name = mapping_info['tool_name']
+        container_name = event.text.strip()
         
-        # Store for field mapping step
+        if container_name.lower() in ['skip', 'none', 'no', 'nahi']:
+            container_name = None
+        
+        update_api_container_name(api_id, container_name)
+        del api_container_mapping_temp[sender.id]
+        
+        # Move to Step 3: Field mapping
         api_field_mapping_temp[sender.id] = {
             'api_id': api_id,
             'tool_name': tool_name
         }
+        
+        field_example = '''📝 **STEP 3: Select Response Fields**
 
-        # Ask for field mapping
-        field_example = '''📝 **STEP 2: Select Response Fields**
-
-API URL saved! Now choose which fields to show.
+API URL and Container saved! Now choose which fields to show.
 
 **Available Fields in API Response:**
 name, mobile, address, father_name, alt_mobile, circle, id_number, email, id, source, etc.
@@ -3428,6 +3456,41 @@ Or type **"skip"** to show full response.'''
         
         back_btn = get_tool_back_button(tool_name)
         await event.respond(field_example, buttons=[[Button.inline('⏭️ Skip (Full JSON)', f'skip_field_mapping_{api_id}'.encode())], [Button.inline('❌ Cancel', back_btn)]])
+        raise events.StopPropagation
+
+    # Handle API URL input (Step 1 of API add)
+    if sender.id in tool_api_action:
+        tool_name = tool_api_action[sender.id]
+        api_url = event.text.strip()
+
+        # Validate that URL contains the placeholder
+        placeholder = TOOL_CONFIG[tool_name]['placeholder']
+        if placeholder not in api_url:
+            await event.respond(f'❌ Invalid API URL!\n\nURL must contain placeholder: {placeholder}', buttons=[[Button.inline('🔙 Back', f'tool_{tool_name.split("_")[0]}_info'.encode())]])
+            raise events.StopPropagation
+
+        # Add API to database and get ID
+        api_id = add_tool_api(tool_name, api_url)
+        del tool_api_action[sender.id]
+        
+        # Store for container mapping step
+        api_container_mapping_temp[sender.id] = {
+            'api_id': api_id,
+            'tool_name': tool_name
+        }
+
+        # Ask for container name
+        container_prompt = '''📦 **STEP 2: API JSON Container**
+
+API URL saved! Ab ye batayein ki API ka data kis JSON container (key) ke andar hai?
+
+**Examples:**
+- Agar response `{"status": "success", "data": {...}}` hai, toh **data** likhein.
+- Agar response `{"result": [...]}` hai, toh **result** likhein.
+- Agar koi container nahi hai (direct data hai), toh **skip** likhein.'''
+        
+        back_btn = get_tool_back_button(tool_name)
+        await event.respond(container_prompt, buttons=[[Button.inline('⏭️ Skip', f'skip_container_mapping_{api_id}'.encode())], [Button.inline('❌ Cancel', back_btn)]])
         raise events.StopPropagation
 
     if sender.id in tool_session:

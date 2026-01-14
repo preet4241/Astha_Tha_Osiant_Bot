@@ -64,36 +64,20 @@ def init_db():
                 tool_name TEXT NOT NULL,
                 api_url TEXT NOT NULL,
                 added_date TEXT,
-                response_fields TEXT
+                response_fields TEXT,
+                container_name TEXT
             )
         ''')
         conn.commit()
         
         # Migrations
         try:
-            cursor.execute("PRAGMA table_info(users)")
-            columns = [col[1] for col in cursor.fetchall()]
-            if 'ban_reason' not in columns:
-                cursor.execute('ALTER TABLE users ADD COLUMN ban_reason TEXT')
-            if 'ban_date' not in columns:
-                cursor.execute('ALTER TABLE users ADD COLUMN ban_date TEXT')
-            if 'last_active' not in columns:
-                cursor.execute('ALTER TABLE users ADD COLUMN last_active TEXT')
-            if 'is_active' not in columns:
-                cursor.execute('ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1')
-            
-            cursor.execute("PRAGMA table_info(groups)")
-            columns = [col[1] for col in cursor.fetchall()]
-            for col, dtype in [('invite_link', 'TEXT'), ('added_by_id', 'INTEGER'), 
-                               ('added_by_username', 'TEXT'), ('is_private', 'INTEGER DEFAULT 1'),
-                               ('permission_warnings', 'INTEGER DEFAULT 0'), ('is_active', 'INTEGER DEFAULT 1')]:
-                if col not in columns:
-                    cursor.execute(f'ALTER TABLE groups ADD COLUMN {col} {dtype}')
-            
             cursor.execute("PRAGMA table_info(tool_apis)")
             columns = [col[1] for col in cursor.fetchall()]
             if 'response_fields' not in columns:
                 cursor.execute('ALTER TABLE tool_apis ADD COLUMN response_fields TEXT')
+            if 'container_name' not in columns:
+                cursor.execute('ALTER TABLE tool_apis ADD COLUMN container_name TEXT')
             conn.commit()
         except Exception as e:
             print(f"[DB] Migration notice: {e}")
@@ -244,14 +228,21 @@ def add_tool_api(tool_name, api_url, response_fields=None):
         conn.commit()
         return api_id
 
+def update_api_container_name(api_id, container_name):
+    """Update container name for an API"""
+    with get_db_conn() as conn:
+        conn.execute('UPDATE tool_apis SET container_name = ? WHERE id = ?', (container_name, api_id))
+        conn.commit()
+        return True
+
 def get_tool_apis(tool_name):
     with get_db_conn() as conn:
         try:
-            apis = conn.execute('SELECT id, api_url, added_date, response_fields FROM tool_apis WHERE tool_name = ?', (tool_name,)).fetchall()
-            return [{'id': a[0], 'url': a[1], 'added_date': a[2], 'response_fields': a[3]} for a in apis]
+            apis = conn.execute('SELECT id, api_url, added_date, response_fields, container_name FROM tool_apis WHERE tool_name = ?', (tool_name,)).fetchall()
+            return [{'id': a[0], 'url': a[1], 'added_date': a[2], 'response_fields': a[3], 'container_name': a[4]} for a in apis]
         except:
-            apis = conn.execute('SELECT id, api_url, added_date FROM tool_apis WHERE tool_name = ?', (tool_name,)).fetchall()
-            return [{'id': a[0], 'url': a[1], 'added_date': a[2], 'response_fields': None} for a in apis]
+            apis = conn.execute('SELECT id, api_url, added_date, response_fields FROM tool_apis WHERE tool_name = ?', (tool_name,)).fetchall()
+            return [{'id': a[0], 'url': a[1], 'added_date': a[2], 'response_fields': a[3], 'container_name': None} for a in apis]
 
 def remove_tool_api(tool_name, api_id):
     with get_db_conn() as conn:
