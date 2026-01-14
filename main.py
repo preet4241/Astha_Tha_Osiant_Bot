@@ -162,7 +162,7 @@ from database import (
     get_all_groups, group_exists, is_group_active, get_removed_groups, get_group_details, update_group_invite_link, increment_permission_warning,
     set_tool_status, get_tool_status, get_all_active_tools,
     get_tool_apis, add_tool_api, remove_tool_api,
-    update_api_response_fields, get_api_response_fields,
+    update_api_response_fields, update_api_container_name, get_api_response_fields,
     set_backup_channel, get_backup_channel, set_backup_interval,
     get_backup_interval, set_last_backup_time, get_last_backup_time,
     get_db_file, get_user_warnings, add_warning, remove_warning, clear_warnings,
@@ -555,6 +555,7 @@ async def call_tool_api(tool_name, validated_input):
     for api_info in all_apis:
         api_url = api_info['url']
         response_fields = api_info.get('response_fields')
+        container = api_info.get('container_name')
         url = api_url.replace(TOOL_CONFIG[tool_name]['placeholder'], validated_input)
 
         try:
@@ -566,6 +567,19 @@ async def call_tool_api(tool_name, validated_input):
                             data = await response.json()
                             print(f"[LOG] ✅ API Success: {api_url[:50]}")
                             
+                            # Apply container mapping if specified
+                            if container:
+                                # Handle nested container like 'data.result'
+                                for part in container.split('.'):
+                                    if isinstance(data, dict) and part in data:
+                                        data = data[part]
+                                    elif isinstance(data, list) and part.isdigit():
+                                        idx = int(part)
+                                        if idx < len(data):
+                                            data = data[idx]
+                                    else:
+                                        break
+
                             # Apply field mapping if configured
                             if response_fields:
                                 filtered_data = extract_json_fields(data, response_fields)
