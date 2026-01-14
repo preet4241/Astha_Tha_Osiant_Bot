@@ -28,3 +28,9 @@ python-Levenshtein
 pytz
 telethon
 flask[async]
+aiohttp
+flask
+fuzzywuzzy
+python-Levenshtein
+pytz
+telethon
