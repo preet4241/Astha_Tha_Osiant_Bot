@@ -700,50 +700,14 @@ def detect_json_keys(data, max_depth=3, current_depth=0):
     
     return keys
 
-def format_json_as_text(data, query=None):
-    """Format JSON data as readable text (not JSON code block)"""
-    if data is None:
-        return "No data found"
-    
-    text = ""
-    # Add Query and Header if this is the top level call
-    if query:
-        text += f"🔍 **Your Query**: `{query}`\n"
-        text += "📝 **Information Found**:\n"
-        text += "━━━━━━━━━━━━━━━━━━━━━\n"
-    
-    # If it's a list, format each item
-    if isinstance(data, list):
-        if not data:
-            return text + "No data found"
-        list_text = ""
-        for i, item in enumerate(data, 1):
-            if isinstance(item, (dict, list)):
-                if len(data) > 1:
-                    list_text += f"\n📍 **Record {i}**\n"
-                list_text += format_json_as_text_recursive(item)
-                list_text += "\n"
-            else:
-                list_text += f"• `{item}`\n"
-        text += list_text.strip()
-    elif isinstance(data, dict):
-        text += format_json_as_text_recursive(data)
-    else:
-        text += str(data)
-    
-    if "\n" in text:
-        text = text.strip()
-        text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
-        text += "Developed with ❤️ by @KissuHQ"
-        
-    return text.strip()
-
-def format_json_as_text_recursive(data):
-    """Recursive helper for formatting JSON without repeating headers/footers"""
+def format_json_as_text_recursive(data, indent=0):
+    """Recursive helper for formatting JSON with spacing and container headers"""
     if not isinstance(data, (dict, list)):
         return str(data)
         
     dict_text = ""
+    prefix = "  " * indent
+    
     if isinstance(data, dict):
         if not data:
             return "No details available"
@@ -759,41 +723,76 @@ def format_json_as_text_recursive(data):
                 break
         
         if found_container:
-            # Process container content
-            dict_text += format_json_as_text_recursive(container_data)
+            dict_text += format_json_as_text_recursive(container_data, indent)
         else:
-            # No container found, show all relevant fields from top level
             for key in sorted(data.keys()):
                 value = data[key]
                 if key.lower() not in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp', 'status', 'error', 'msg', 'message']:
                     formatted_key = key.replace('_', ' ').title()
                     if isinstance(value, dict):
                         if value:
-                            dict_text += f"\n📍 **{formatted_key}**\n"
-                            dict_text += format_json_as_text_recursive(value) + "\n"
+                            dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
+                            dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
                     elif isinstance(value, list):
                         if value:
-                            dict_text += f"\n📍 **{formatted_key}**\n"
-                            dict_text += format_json_as_text_recursive(value) + "\n"
+                            dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
+                            dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
                     else:
                         clean_value = str(value).strip('`').strip()
                         if not clean_value and key.lower() == 'email':
                             clean_value = "Not Provided"
                         
                         if clean_value:
-                            dict_text += f"• **{formatted_key}**: `{clean_value}`\n"
+                            dict_text += f"{prefix}• **{formatted_key}**: `{clean_value}`\n"
                         else:
-                            dict_text += f"• **{formatted_key}**: `Not Available`\n"
+                            dict_text += f"{prefix}• **{formatted_key}**: `Not Available`\n"
     elif isinstance(data, list):
         for i, item in enumerate(data, 1):
             if isinstance(item, (dict, list)):
                 if len(data) > 1:
-                    dict_text += f"\n📍 **Record {i}**\n"
-                dict_text += format_json_as_text_recursive(item) + "\n"
+                    dict_text += f"\n{prefix}📍 **Record {i}**\n"
+                dict_text += format_json_as_text_recursive(item, indent + 1) + "\n"
             else:
-                dict_text += f"• `{item}`\n"
+                dict_text += f"{prefix}• `{item}`\n"
                 
     return dict_text.strip()
+
+def format_json_as_text(data, query=None):
+    """Format JSON data as readable text with proper spacing and headers"""
+    if data is None:
+        return "No data found"
+    
+    text = ""
+    if query:
+        text += f"🔍 **Your Query**: `{query}`\n"
+        text += "📝 **Information Found**:\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
+    
+    if isinstance(data, list):
+        if not data:
+            return text + "No data found"
+        list_text = ""
+        for i, item in enumerate(data, 1):
+            if isinstance(item, (dict, list)):
+                if len(data) > 1:
+                    list_text += f"\n📍 **Record {i}**\n"
+                list_text += format_json_as_text_recursive(item, indent=1)
+                list_text += "\n"
+            else:
+                list_text += f"• `{item}`\n"
+        text += list_text.strip()
+    elif isinstance(data, dict):
+        text += format_json_as_text_recursive(data, indent=0)
+    else:
+        text += str(data)
+    
+    if "\n" in text:
+        text = text.strip()
+        text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
+        text += "Developed with ❤️ by @KissuHQ"
+        
+    return text.strip()
+
 
 def get_greeting():
     from datetime import timezone
