@@ -30,7 +30,9 @@ def init_db():
                 banned INTEGER DEFAULT 0,
                 status TEXT DEFAULT 'active',
                 ban_reason TEXT,
-                ban_date TEXT
+                ban_date TEXT,
+                last_active TEXT,
+                is_active INTEGER DEFAULT 0
             )
         ''')
         cursor.execute('''
@@ -72,6 +74,13 @@ def init_db():
         
         # Migrations
         try:
+            cursor.execute("PRAGMA table_info(users)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'last_active' not in columns:
+                cursor.execute('ALTER TABLE users ADD COLUMN last_active TEXT')
+            if 'is_active' not in columns:
+                cursor.execute('ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 0')
+            
             cursor.execute("PRAGMA table_info(tool_apis)")
             columns = [col[1] for col in cursor.fetchall()]
             if 'response_fields' not in columns:
