@@ -34,3 +34,9 @@ fuzzywuzzy
 python-Levenshtein
 pytz
 telethon
+aiohttp
+flask
+fuzzywuzzy
+python-Levenshtein
+pytz
+telethon
