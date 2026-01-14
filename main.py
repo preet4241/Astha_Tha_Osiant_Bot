@@ -725,18 +725,21 @@ def format_json_as_text_recursive(data, indent=0):
         if found_container:
             dict_text += format_json_as_text_recursive(container_data, indent)
         else:
+            # Sort keys so containers come first or consistent order
             for key in sorted(data.keys()):
                 value = data[key]
                 if key.lower() not in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp', 'status', 'error', 'msg', 'message']:
                     formatted_key = key.replace('_', ' ').title()
-                    if isinstance(value, dict):
+                    if isinstance(value, (dict, list)):
                         if value:
-                            dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
-                            dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
-                    elif isinstance(value, list):
-                        if value:
-                            dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
-                            dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
+                            if indent == 0:
+                                # Top level container - add major separator
+                                dict_text += f"\n📍 **{formatted_key}**\n"
+                                dict_text += format_json_as_text_recursive(value, indent + 1)
+                                dict_text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
+                            else:
+                                dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
+                                dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
                     else:
                         clean_value = str(value).strip('`').strip()
                         if not clean_value and key.lower() == 'email':
@@ -766,7 +769,7 @@ def format_json_as_text(data, query=None):
     if query:
         text += f"🔍 **Your Query**: `{query}`\n"
         text += "📝 **Information Found**:\n"
-        text += "━━━━━━━━━━━━━━━━━━━━━\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if isinstance(data, list):
         if not data:
@@ -775,9 +778,9 @@ def format_json_as_text(data, query=None):
         for i, item in enumerate(data, 1):
             if isinstance(item, (dict, list)):
                 if len(data) > 1:
-                    list_text += f"\n📍 **Record {i}**\n"
+                    list_text += f"📍 **Record {i}**\n"
                 list_text += format_json_as_text_recursive(item, indent=1)
-                list_text += "\n"
+                list_text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n\n"
             else:
                 list_text += f"• `{item}`\n"
         text += list_text.strip()
@@ -786,8 +789,12 @@ def format_json_as_text(data, query=None):
     else:
         text += str(data)
     
+    # Remove redundant trailing separators if any
+    text = text.strip()
+    while text.endswith("━━━━━━━━━━━━━━━━━━━━━"):
+        text = text[:-21].strip()
+        
     if "\n" in text:
-        text = text.strip()
         text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
         text += "Developed with ❤️ by @KissuHQ"
         
