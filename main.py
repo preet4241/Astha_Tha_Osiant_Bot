@@ -775,11 +775,10 @@ def format_json_as_text(data, query=None):
     else:
         text += str(data)
     
-    if "\n" in text and "@Cyber_as" not in text:
+    if "\n" in text:
         text = text.strip()
         text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
-        text += "Owner: @Cyber_as\n"
-        text += "Developed by: @KissuHQ"
+        text += "Developed with ❤️ by @KissuHQ"
         
     return text.strip()
 
@@ -3525,7 +3524,7 @@ API URL saved! Ab ye batayein ki API ka data kis JSON container (key) ke andar h
                     await processing_msg.edit(response)
                     asyncio.create_task(send_back_button_delayed(client, sender.id, processing_msg.id, back_btn, 2))
                 else:
-                    msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+                    msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
                     await processing_msg.edit(msg, buttons=[[Button.inline('👈 Back', back_btn)]])
 
                 del tool_session[sender.id]
@@ -5322,7 +5321,7 @@ async def num_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5378,7 +5377,7 @@ async def adhar_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5434,7 +5433,7 @@ async def family_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5490,7 +5489,7 @@ async def vhe_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5546,7 +5545,7 @@ async def ifsc_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5602,7 +5601,7 @@ async def pak_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5658,7 +5657,7 @@ async def pin_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5714,7 +5713,7 @@ async def imei_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
@@ -5770,7 +5769,7 @@ async def ip_handler(event):
             response = response[:3997] + "..."
         await processing_msg.edit(response)
     else:
-        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nOwner: @Cyber_as\nDeveloped by: @KissuHQ"
+        msg = f"🔍 **Your Query**: `{validated}`\n❌ Error: {error}\n\n━━━━━━━━━━━━━━━━━━━━━\nDeveloped by: @KissuHQ"
         await processing_msg.edit(msg)
     
     # Auto-delete response after 5 minutes
