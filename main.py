@@ -905,55 +905,51 @@ def extract_json_fields(data, fields):
         return data
     
     result = {}
-    has_paths = any('.' in f for f in field_list)
     
-    if has_paths:
-        for field in field_list:
+    # Recursive search for a key in a nested dictionary
+    def find_key_recursive(obj, target_key):
+        if isinstance(obj, dict):
+            if target_key in obj:
+                return obj[target_key]
+            for v in obj.values():
+                res = find_key_recursive(v, target_key)
+                if res is not None:
+                    return res
+        elif isinstance(obj, list):
+            for item in obj:
+                res = find_key_recursive(item, target_key)
+                if res is not None:
+                    return res
+        return None
+
+    for field in field_list:
+        if '.' in field:
             value = get_nested_value(data, field)
             if value is not None:
                 key = field.split('.')[-1]
                 result[key] = value
-    else:
-        if isinstance(data, dict):
-            data_container_keys = ['data', 'Data', 'Data1', 'data1', 'result', 'Result', 
-                                   'response', 'Response', 'info', 'Info', 'details', 'Details',
-                                   'records', 'Records', 'items', 'Items', 'results', 'Results',
-                                   'objects', 'list', 'data_list']
-            
-            container_data = None
-            for container_key in data_container_keys:
-                if container_key in data and data[container_key]:
-                    container_data = data[container_key]
-                    break
-            
-            if container_data is not None:
-                if isinstance(container_data, list):
-                    result_list = []
-                    for item in container_data:
-                        if isinstance(item, dict):
-                            filtered_item = {k: v for k, v in item.items() if k in field_list}
-                            if filtered_item:
-                                result_list.append(filtered_item)
-                        else:
-                            result_list.append(item)
-                    if result_list:
-                        result = result_list if len(result_list) > 1 else result_list[0]
-                elif isinstance(container_data, dict):
-                    result = {k: v for k, v in container_data.items() if k in field_list}
-            
-            if not result:
-                result = {k: v for k, v in data.items() if k in field_list}
-        elif isinstance(data, list):
-            result = []
-            for item in data:
-                if isinstance(item, dict):
-                    filtered = {k: v for k, v in item.items() if k in field_list}
-                    if filtered:
-                        result.append(filtered)
-                else:
-                    result.append(item)
         else:
-            result = data
+            # First try top level and containers
+            value = None
+            if isinstance(data, dict):
+                if field in data:
+                    value = data[field]
+                else:
+                    data_container_keys = ['data', 'Data', 'Data1', 'data1', 'result', 'Result', 
+                                           'response', 'Response', 'info', 'Info', 'details', 'Details',
+                                           'records', 'Records', 'items', 'Items', 'results', 'Results',
+                                           'objects', 'list', 'data_list']
+                    for container_key in data_container_keys:
+                        if container_key in data and isinstance(data[container_key], dict) and field in data[container_key]:
+                            value = data[container_key][field]
+                            break
+            
+            # If still not found, search recursively
+            if value is None:
+                value = find_key_recursive(data, field)
+            
+            if value is not None:
+                result[field] = value
     
     return result if result else data
 
