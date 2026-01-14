@@ -700,74 +700,19 @@ def detect_json_keys(data, max_depth=3, current_depth=0):
     
     return keys
 
-def format_json_as_text_recursive(data, indent=0):
-    """Recursive helper for formatting JSON with spacing and container headers"""
-    if not isinstance(data, (dict, list)):
-        return str(data)
-        
-    dict_text = ""
-    prefix = "  " * indent
-    
-    if isinstance(data, dict):
-        if not data:
-            return "No details available"
-            
-        # Sort keys so we can identify containers vs simple fields
-        keys = sorted(data.keys())
-        
-        # If it's the top level (indent 0) and we have nested dicts, treat them as containers
-        for key in keys:
-            value = data[key]
-            if key.lower() in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp', 'status', 'error', 'msg', 'message']:
-                continue
-                
-            formatted_key = key.replace('_', ' ').title()
-            
-            if isinstance(value, dict):
-                if value:
-                    if indent == 0:
-                        # Major container header with spacing
-                        dict_text += f"\n📍 **{formatted_key}**\n"
-                        dict_text += format_json_as_text_recursive(value, indent + 1)
-                        dict_text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
-                    else:
-                        dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
-                        dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
-            elif isinstance(value, list):
-                if value:
-                    dict_text += f"\n{prefix}📍 **{formatted_key}**\n"
-                    dict_text += format_json_as_text_recursive(value, indent + 1) + "\n"
-            else:
-                clean_value = str(value).strip('`').strip()
-                if not clean_value and key.lower() == 'email':
-                    clean_value = "Not Provided"
-                
-                if clean_value:
-                    dict_text += f"{prefix}• **{formatted_key}**: `{clean_value}`\n"
-                else:
-                    dict_text += f"{prefix}• **{formatted_key}**: `Not Available`\n"
-    elif isinstance(data, list):
-        for i, item in enumerate(data, 1):
-            if isinstance(item, (dict, list)):
-                if len(data) > 1:
-                    dict_text += f"\n{prefix}📍 **Record {i}**\n"
-                dict_text += format_json_as_text_recursive(item, indent + 1) + "\n"
-            else:
-                dict_text += f"{prefix}• `{item}`\n"
-                
-    return dict_text.strip()
-
 def format_json_as_text(data, query=None):
-    """Format JSON data as readable text with proper spacing and headers"""
+    """Format JSON data as readable text (not JSON code block)"""
     if data is None:
         return "No data found"
     
     text = ""
+    # Add Query and Header if this is the top level call
     if query:
         text += f"🔍 **Your Query**: `{query}`\n"
         text += "📝 **Information Found**:\n"
-        text += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
     
+    # If it's a list, format each item
     if isinstance(data, list):
         if not data:
             return text + "No data found"
@@ -775,28 +720,80 @@ def format_json_as_text(data, query=None):
         for i, item in enumerate(data, 1):
             if isinstance(item, (dict, list)):
                 if len(data) > 1:
-                    list_text += f"📍 **Record {i}**\n"
-                list_text += format_json_as_text_recursive(item, indent=1)
-                list_text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    list_text += f"\n📍 **Record {i}**\n"
+                list_text += format_json_as_text_recursive(item)
+                list_text += "\n"
             else:
                 list_text += f"• `{item}`\n"
         text += list_text.strip()
     elif isinstance(data, dict):
-        text += format_json_as_text_recursive(data, indent=0)
+        text += format_json_as_text_recursive(data)
     else:
         text += str(data)
     
-    # Remove redundant trailing separators if any
-    text = text.strip()
-    while text.endswith("━━━━━━━━━━━━━━━━━━━━━"):
-        text = text[:-21].strip()
-        
     if "\n" in text:
+        text = text.strip()
         text += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
         text += "Developed with ❤️ by @KissuHQ"
         
     return text.strip()
 
+def format_json_as_text_recursive(data):
+    """Recursive helper for formatting JSON without repeating headers/footers"""
+    if not isinstance(data, (dict, list)):
+        return str(data)
+        
+    dict_text = ""
+    if isinstance(data, dict):
+        if not data:
+            return "No details available"
+            
+        # Try to find common data containers first
+        data_keys = ['data', 'Data', 'Data1', 'data1', 'result', 'info', 'details', 'response', 'items', 'records', 'objects']
+        found_container = False
+        container_data = None
+        for k in data_keys:
+            if k in data and isinstance(data[k], (list, dict)) and data[k]:
+                container_data = data[k]
+                found_container = True
+                break
+        
+        if found_container:
+            # Process container content
+            dict_text += format_json_as_text_recursive(container_data)
+        else:
+            # No container found, show all relevant fields from top level
+            for key in sorted(data.keys()):
+                value = data[key]
+                if key.lower() not in ['success', 'developer', 'credit_by', 'powered_by', 'timestamp', 'status', 'error', 'msg', 'message']:
+                    formatted_key = key.replace('_', ' ').title()
+                    if isinstance(value, dict):
+                        if value:
+                            dict_text += f"\n📍 **{formatted_key}**\n"
+                            dict_text += format_json_as_text_recursive(value) + "\n"
+                    elif isinstance(value, list):
+                        if value:
+                            dict_text += f"\n📍 **{formatted_key}**\n"
+                            dict_text += format_json_as_text_recursive(value) + "\n"
+                    else:
+                        clean_value = str(value).strip('`').strip()
+                        if not clean_value and key.lower() == 'email':
+                            clean_value = "Not Provided"
+                        
+                        if clean_value:
+                            dict_text += f"• **{formatted_key}**: `{clean_value}`\n"
+                        else:
+                            dict_text += f"• **{formatted_key}**: `Not Available`\n"
+    elif isinstance(data, list):
+        for i, item in enumerate(data, 1):
+            if isinstance(item, (dict, list)):
+                if len(data) > 1:
+                    dict_text += f"\n📍 **Record {i}**\n"
+                dict_text += format_json_as_text_recursive(item) + "\n"
+            else:
+                dict_text += f"• `{item}`\n"
+                
+    return dict_text.strip()
 
 def get_greeting():
     from datetime import timezone
@@ -4043,175 +4040,180 @@ API URL saved! Ab ye batayein ki API ka data kis JSON container (key) ke andar h
 processed_joins = {}
 
 @client.on(events.ChatAction)
-async def chat_action_handler(event):
-    """Handle bot being added to/removed from groups"""
+async def member_joined_handler(event):
+    """Handle new members joining the group"""
     try:
-        # Check if bot was added
+        # Only process if there's an action message (user joined/added)
+        if not event.action_message:
+            return
+
+        # Check if BOT itself was added to a group
         if event.user_added:
-            try:
-                bot_me = await client.get_me()
-                added_users = await event.get_users()
-                is_bot_added = False
-                if added_users:
-                    for u in added_users:
-                        if u and u.id == bot_me.id:
-                            is_bot_added = True
-                            break
-                
-                if is_bot_added:
-                    chat = await event.get_chat()
-                    if chat:
-                        grp_id = chat.id
-                        grp_name = getattr(chat, 'username', str(chat.id))
-                        grp_title = getattr(chat, 'title', 'Unknown Group')
-                        is_private = 1 if not getattr(chat, 'username', None) else 0
-                        
-                        added_by_id = None
-                        if event.action_message and event.action_message.from_id:
-                            from_id = event.action_message.from_id
-                            if hasattr(from_id, 'user_id'):
-                                added_by_id = from_id.user_id
-                        
-                        added_by_username = "Unknown"
-                        if added_by_id:
-                            try:
-                                adder = await client.get_entity(added_by_id)
-                                added_by_username = getattr(adder, 'username', getattr(adder, 'first_name', "Unknown"))
-                            except: pass
-
-                        add_group(grp_id, grp_name, grp_title, None, added_by_id, added_by_username, is_private)
-                        print(f"[LOG] 🤖 Bot added to group: {grp_title} ({grp_id})")
-                        
-                        try:
-                            await event.respond(f"✅ Bot added successfully to **{grp_title}**!\n\nUse /help to see available commands.")
-                        except: pass
-            except Exception as e:
-                print(f"[LOG] ❌ Error in bot added detection: {e}")
-        
-        # Check if bot was removed
-        elif event.user_kicked or event.user_left:
-            try:
-                user = await event.get_user()
-                bot_me = await client.get_me()
-                if user and user.id == bot_me.id:
-                    chat = await event.get_chat()
-                    if chat:
-                        remove_group(chat.id)
-                        print(f"[LOG] 🤖 Bot removed from group: {chat.id}")
-            except Exception as e:
-                print(f"[LOG] ❌ Error in bot removed detection: {e}")
-                
-    except Exception as e:
-        print(f"[LOG] ❌ General error in chat_action_handler: {e}")
-
-@client.on(events.NewMessage)
-async def global_group_handler(event):
-    """Auto-add groups to database when a message is received"""
-    if event.is_group:
-        try:
-            chat = await event.get_chat()
-            if chat and not group_exists(chat.id):
-                grp_id = chat.id
-                grp_name = getattr(chat, 'username', str(chat.id))
-                grp_title = getattr(chat, 'title', 'Unknown Group')
-                is_private = 1 if not getattr(chat, 'username', None) else 0
-                
-                add_group(
-                    group_id=grp_id,
-                    group_username=grp_name,
-                    group_title=grp_title,
-                    is_private=is_private
-                )
-                print(f"[LOG] 📝 Auto-added group to DB via message: {grp_title} ({grp_id})")
-        except Exception as e:
-            print(f"[LOG] ❌ Error in group auto-addition: {e}")
-
-        if event.user_joined or event.user_added:
-            try:
+            user = await event.get_user()
+            if user and user.id == (await client.get_me()).id:
+                # Bot was added to a new group
                 chat = await event.get_chat()
                 if not chat:
                     return
-
+                
                 grp_id = chat.id
-                grp_name = getattr(chat, 'username', str(chat.id))
-                grp_title = getattr(chat, 'title', 'Unknown Group')
-
-                # Ensure group is in DB and active
-                if not group_exists(grp_id):
-                    add_group(grp_id, grp_name, grp_title, is_active=1)
-                    print(f"[LOG] 📝 Added group to DB on member join: {grp_title}")
+                grp_name = chat.username or str(chat.id)
+                grp_title = chat.title or 'Unknown Group'
+                invite_link = None
+                is_private = 1 if not chat.username else 0
+                added_by_id = sender.id
+                added_by_username = sender.username or sender.first_name or "Unknown"
                 
-                # Check if group is active - if not, skip welcome message
-                if not is_group_active(grp_id):
-                    return
-
-                # Get the user who joined
-                user = await event.get_user()
-                if not user:
-                    print(f"[LOG] ⚠️ Could not get user info for join event in {grp_title}")
-                    return
-
-                # CHECK IF USER IS BANNED
-                banned_user = get_user(user.id)
-                if banned_user and banned_user.get('banned'):
+                # Try to get invite link for private groups
+                if not chat.username:
                     try:
-                        from telethon.tl.types import ChatBannedRights
-                        from telethon.tl.functions.channels import EditBannedRequest
-                        banned_rights = ChatBannedRights(
-                            until_date=None,
-                            view_messages=True,
-                            send_messages=True,
-                            send_media=True,
-                            send_stickers=True,
-                            send_gifs=True,
-                            send_games=True,
-                            send_inline=True,
-                            embed_links=True
-                        )
-                        await client(EditBannedRequest(chat, user.id, banned_rights))
-                        print(f"[LOG] 🚫 Banned user {user.first_name} tried to rejoin {grp_title} - BANNED!")
-                        kick_msg = await client.send_message(chat, f"🚫 @{user.username or user.first_name} is banned! Auto-banned!")
-                        await schedule_message_delete(kick_msg, 30)
-                    except Exception as kick_err:
-                        print(f"[LOG] ❌ Could not ban user: {kick_err}")
-                    return
-
-                # Create unique key based on message ID to prevent duplicate processing
-                if hasattr(event.action_message, 'id'):
-                    join_key = f"{grp_id}_{user.id}_{event.action_message.id}"
-                else:
-                    join_key = f"{grp_id}_{user.id}_{int(datetime.now().timestamp())}"
-
-                if join_key in processed_joins:
-                    return
-                processed_joins[join_key] = datetime.now().timestamp()
-
-                print(f"[LOG] 👤 New member joined: {user.first_name} (@{user.username or 'no_username'}) ID: {user.id}")
-                add_user(user.id, user.username or 'unknown', user.first_name or 'User')
+                        from telethon.tl.functions.messages import ExportChatInviteRequest
+                        invite = await client(ExportChatInviteRequest(chat))
+                        invite_link = invite.link
+                        print(f"[LOG] 📎 Got invite link for private group '{grp_title}': {invite_link}")
+                    except Exception as invite_err:
+                        print(f"[LOG] ⚠️ Could not get invite link for '{grp_title}': {invite_err}")
                 
-                user_username = user.username or user.first_name or "user"
-                msg_text = get_random_welcome_message(user_username, grp_title)
-
+                # Auto-add group when bot is directly added
+                was_new = False
+                if not group_exists(grp_id):
+                    add_group(grp_id, grp_name, grp_title, invite_link, added_by_id, added_by_username, is_private)
+                    print(f"[LOG] 🤖 Bot added to new group '{grp_title}' - Auto-added to database")
+                    was_new = True
+                else:
+                    # Group exists but might be inactive - reactivate it
+                    add_group(grp_id, grp_name, grp_title, invite_link, added_by_id, added_by_username, is_private)
+                    print(f"[LOG] 🤖 Bot re-added to group '{grp_title}' - Reactivated in database")
+                
+                # Send thank you message and auto-delete after 10 seconds
                 try:
-                    welcome_message = await client.send_message(chat, msg_text)
-                    print(f"[LOG] ✅ Welcome message sent to {user.first_name} in {grp_title}")
-
-                    async def delete_after_delay():
-                        await asyncio.sleep(600)
+                    if was_new:
+                        thank_msg = f"🎉 **Thank you for adding me to {grp_title}!**\n\n"
+                        thank_msg += f"✨ I'm now ready to serve this group!\n\n"
+                        thank_msg += f"📋 **Available Commands:**\n"
+                        thank_msg += f"• /help - View all commands\n"
+                        thank_msg += f"• /ban - Ban a user (Admins only)\n"
+                        thank_msg += f"• /unban - Unban a user (Admins only)\n"
+                        thank_msg += f"• /info - Get user info (Admins only)\n\n"
+                        thank_msg += f"🛠️ **Tools:** Use /help to see all available tools\n\n"
+                        thank_msg += f"💡 **Tip:** Make me admin for best performance!"
+                    else:
+                        thank_msg = f"🎉 **Thank you for re-adding me to {grp_title}!**\n\n"
+                        thank_msg += f"✨ I'm back and ready to serve!\n\n"
+                        thank_msg += f"Use /help to see all available commands and tools."
+                    
+                    # Send message and get message object
+                    sent_msg = await client.send_message(chat, thank_msg)
+                    print(f"[LOG] ✅ Thank you message sent to group '{grp_title}'")
+                    
+                    # Schedule auto-deletion after 10 seconds
+                    async def delete_thank_you_msg():
+                        await asyncio.sleep(10)
                         try:
-                            await welcome_message.delete()
-                            print(f"[LOG] 🗑️ Welcome message auto-deleted for {user.first_name} in {grp_title}")
+                            await sent_msg.delete()
+                            print(f"[LOG] 🗑️ Thank you message auto-deleted in group '{grp_title}'")
                         except Exception as del_err:
-                            print(f"[LOG] ❌ Could not delete welcome message: {del_err}")
-
-                    asyncio.create_task(delete_after_delay())
+                            print(f"[LOG] ❌ Could not delete thank you message: {del_err}")
+                    
+                    # Run deletion in background
+                    asyncio.create_task(delete_thank_you_msg())
+                    
                 except Exception as send_err:
-                    print(f"[LOG] ❌ Error sending welcome message: {send_err}")
-            except Exception as inner_e:
-                print(f"[LOG] ❌ Error in member join logic: {inner_e}")
+                    print(f"[LOG] ❌ Could not send thank you message: {send_err}")
+                
+                return
+
+        if event.user_joined or event.user_added:
+            chat = await event.get_chat()
+            if not chat:
+                print(f"[LOG] ⚠️ Could not get chat info in member_joined_handler")
+                return
+
+            grp_id = chat.id
+            grp_name = chat.username or str(chat.id)
+            grp_title = chat.title or 'Unknown Group'
+
+            # Check if group is active - if not, skip welcome message
+            if not is_group_active(grp_id):
+                print(f"[LOG] ⏭️ Group '{grp_title}' is removed - skipping welcome message")
+                return
+
+            # Get the user who joined
+            user = await event.get_user()
+            if not user:
+                print(f"[LOG] ⚠️ Could not get user info for join event in {grp_title}")
+                return
+
+            # CHECK IF USER IS BANNED - if yes, ban them immediately with EditBannedRequest
+            banned_user = get_user(user.id)
+            if banned_user and banned_user.get('banned'):
+                try:
+                    banned_rights = ChatBannedRights(
+                        until_date=None,
+                        view_messages=True,
+                        send_messages=True,
+                        send_media=True,
+                        send_stickers=True,
+                        send_gifs=True,
+                        send_games=True,
+                        send_inline=True,
+                        embed_links=True
+                    )
+                    await client(EditBannedRequest(chat, user.id, banned_rights))
+                    print(f"[LOG] 🚫 Banned user {user.first_name} tried to rejoin {grp_title} - BANNED!")
+                    kick_msg = await client.send_message(chat, f"🚫 @{user.username or user.first_name} is banned! Auto-banned!")
+                    await schedule_message_delete(kick_msg, 30)
+                except Exception as kick_err:
+                    print(f"[LOG] ❌ Could not ban user: {kick_err}")
+                return
+
+            # Create unique key based on message ID to prevent duplicate processing
+            if hasattr(event.action_message, 'id'):
+                join_key = f"{grp_id}_{user.id}_{event.action_message.id}"
+            else:
+                join_key = f"{grp_id}_{user.id}_{int(datetime.now().timestamp())}"
+
+            # Check if we already processed this exact join event
+            if join_key in processed_joins:
+                print(f"[LOG] ⏭️ Skipping duplicate join event for {user.first_name} in {grp_title}")
+                return
+
+            # Mark as processed
+            processed_joins[join_key] = datetime.now().timestamp()
+
+            print(f"[LOG] 👤 New member joined: {user.first_name} (@{user.username or 'no_username'}) ID: {user.id}")
+            print(f"[LOG] 📍 Group: {grp_title} (ID: {grp_id})")
+
+            # Add user to database
+            add_user(user.id, user.username or 'unknown', user.first_name or 'User')
+            print(f"[LOG] ✅ User '{user.first_name}' added/updated in database")
+
+            # Get random welcome message (includes both default and custom messages)
+            user_username = user.username or user.first_name or "user"
+            msg_text = get_random_welcome_message(user_username, grp_title)
+            print(f"[LOG] 🎲 Random welcome message selected: {msg_text[:50]}...")
+
+            try:
+                # Send welcome message
+                welcome_message = await client.send_message(chat, msg_text)
+                print(f"[LOG] ✅ Welcome message sent to {user.first_name} in {grp_title}")
+
+                # Schedule deletion after 600 seconds (10 minutes)
+                async def delete_after_delay():
+                    await asyncio.sleep(600)
+                    try:
+                        await welcome_message.delete()
+                        print(f"[LOG] 🗑️ Welcome message auto-deleted for {user.first_name} in {grp_title}")
+                    except Exception as del_err:
+                        print(f"[LOG] ❌ Could not delete welcome message: {del_err}")
+
+                # Run deletion in background
+                asyncio.create_task(delete_after_delay())
+            except Exception as send_err:
+                print(f"[LOG] ❌ Error sending welcome message: {send_err}")
 
     except Exception as e:
-        print(f"[LOG] ❌ Error in global_group_handler: {e}")
+        print(f"[LOG] ❌ Error in member_joined_handler: {e}")
 
 @client.on(events.NewMessage(incoming=True))
 async def group_message_handler(event):
